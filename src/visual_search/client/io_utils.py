@@ -34,9 +34,10 @@ import configparser
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
+logger.setLevel(logging.DEBUG)
 urllib3.disable_warnings()
 
+os.environ["AWS_ENDPOINT_URL"] = "http://localstack:4566"
 
 def get_s3_client(s3_profile: Optional[str] = None) -> BaseClient:
     """Get s3 client.
@@ -293,6 +294,7 @@ class FileBatchProcessor:
                 )
             payload["metadata"] = {"filename": key, **metadata}
             batch.append(payload)
+        logging.info(f"{len(batch)=}, batch[0]: {batch[0]}")
         response = self.session.post(
             self.url, json=batch, headers=self.headers, timeout=self.timeout
         )
@@ -375,7 +377,11 @@ class EmbeddingParquetProcessor:
             "secret_key": credentials.secret_key,
             "endpoint_url": endpoint_url  # Will be None for default AWS S3, or custom for LocalStack/MinIO
         }
-        
+        logging.info(f"{self.collection_id=}")
+        logging.info(f"{payload=}")
+        logging.info(f"{credentials.access_key}")
+        logging.info(f"{credentials.secret_key}")
+        logging.info(f"{endpoint_url=}")
         response = self.session.post(
             self.url,
             json=payload,

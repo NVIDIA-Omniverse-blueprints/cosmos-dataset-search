@@ -31,7 +31,7 @@ except ImportError as e:
     sys.exit(1)
 
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.ERROR,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 LOGGER = logging.getLogger("ingest-collection")
@@ -40,7 +40,7 @@ DEFAULT_PIPELINE = "cosmos_video_search_milvus"
 DEFAULT_BUCKET = "cosmos-test-bucket"
 DEFAULT_S3_ENDPOINT = "http://localstack:4566"
 DEFAULT_PROFILE = "default"
-
+DEFAULT_NUM_WORKERS = 4
 
 class IngestionConfig:
     def __init__(self, args):
@@ -59,14 +59,16 @@ class IngestionConfig:
         
         self.pipeline_id = args.pipeline_id
         self.profile = args.profile
+        self.num_workers = args.num_workers
+
         self.bucket = args.bucket
         self.s3_endpoint = args.s3_endpoint
         
         self.tmpdir = Path(args.tmpdir) if args.tmpdir else None
     
     def validate(self) -> None:
-        if not self.dataset_name and not self.dataset_file:
-            raise ValueError("Either --dataset or --dataset-file must be specified")
+        if not self.dataset_name and not self.dataset_file and not self.video_dir:
+            raise ValueError("Either --dataset or --dataset-file or --video-dir must be specified")
         
         if self.dataset_name and self.dataset_file:
             raise ValueError("Cannot specify both --dataset and --dataset-file")
@@ -167,7 +169,7 @@ class CollectionIngestor:
         )
         
         stats = self.ingestion_manager.ingest_videos(
-            collection_id, s3_path, metadata_json
+            collection_id, s3_path, metadata_json, num_workers=self.config.num_workers
         )
         LOGGER.info("Ingestion stats: %s", stats)
         
@@ -183,7 +185,7 @@ def create_parser():
     )
     
     # Dataset options
-    dataset_group = parser.add_mutually_exclusive_group(required=True)
+    dataset_group = parser.add_mutually_exclusive_group(required=False)
     dataset_group.add_argument(
         "--dataset", 
         help="HuggingFace dataset name (e.g., 'friedrichor/MSR-VTT')"
@@ -247,7 +249,14 @@ def create_parser():
         default=DEFAULT_PROFILE, 
         help=f"Configuration profile (default: {DEFAULT_PROFILE})"
     )
-    
+
+    parser.add_argument(
+        "--num-workers", 
+        type=int, 
+        default=DEFAULT_NUM_WORKERS, 
+        help=f"Number of parallel ingest workers (default: {DEFAULT_NUM_WORKERS})"
+    )
+
     # Storage options
     parser.add_argument(
         "--bucket", 
@@ -273,22 +282,22 @@ def main():
     parser = create_parser()
     args = parser.parse_args()
     
-    try:
-        config = IngestionConfig(args)
-        config.validate()
+    #try:
+    config = IngestionConfig(args)
+    config.validate()
+    
+    ingestor = CollectionIngestor(config)
+    collection_id = ingestor.ingest_collection()
+    
+    print(f"\nCollection ingestion completed successfully!")
+    print(f"Collection ID: {collection_id}")
+    print(f"Collection Name: {config.collection_name or ingestor._get_dataset_slug()}")
+    print(f"Pipeline: {config.pipeline_id}")
+    print(f"\nTest in UI: http://localhost:8080/cosmos-dataset-search")
         
-        ingestor = CollectionIngestor(config)
-        collection_id = ingestor.ingest_collection()
-        
-        print(f"\nCollection ingestion completed successfully!")
-        print(f"Collection ID: {collection_id}")
-        print(f"Collection Name: {config.collection_name or ingestor._get_dataset_slug()}")
-        print(f"Pipeline: {config.pipeline_id}")
-        print(f"\nTest in UI: http://localhost:8080/cosmos-dataset-search")
-        
-    except Exception as e:
-        LOGGER.error("Failed to ingest collection: %s", e)
-        sys.exit(1)
+    # except Exception as e:
+    #     LOGGER.error("Failed to ingest collection: %s", e)
+    #     sys.exit(1)
 
 
 if __name__ == "__main__":
