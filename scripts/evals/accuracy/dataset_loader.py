@@ -9,6 +9,7 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
+import os
 import json
 import logging
 import tempfile
@@ -301,6 +302,17 @@ class DatasetFactory:
                     )
                 else:
                     resolved_video_dir = video_dir
+            elif os.path.exists(video_dir):
+                resolved_video_dir = Path(video_dir)
+                records = [
+                    DatasetRecord(
+                        video_id=file.split(".")[0],
+                        video_path=file,
+                        caption="",
+                    )
+                    for file in os.listdir(resolved_video_dir)
+                ]
+                LOGGER.info("Loading local dataset from %s", resolved_video_dir)
             else:
                 LOGGER.info("Loading HF dataset %s split=%s", dataset_name, split)
                 records = HuggingFaceDatasetLoader.load_generic(
