@@ -109,6 +109,86 @@ def copy_if_needed(src: str, dest_dir: Path, video_source_dir: Path = None) -> s
         print(f"Warning: Source file {src_path.name} not found, skipping")
         return str(src_path)
 
+def encode_h265_to_h264(unzip_path_h265: str, unzip_path_h264: str) -> str:
+    """Encode H265 to H264."""
+    import os
+    import subprocess
+    from concurrent.futures import ThreadPoolExecutor
+    os.makedirs(unzip_path_h264, exist_ok=True)
+
+    mp4_files = [f for f in os.listdir(unzip_path_h265) if f.endswith(".mp4")]
+    n_workers = os.cpu_count() or 4
+    print(f"Encoding {len(mp4_files)} videos to H264 using {n_workers} workers")
+
+    def convert_one(file: str) -> None:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", f"{unzip_path_h265}/{file}",
+                "-c:v", "libx264", "-profile:v", "baseline",
+                "-movflags", "+faststart", f"{unzip_path_h264}/{file}",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
+
+    with ThreadPoolExecutor(max_workers=n_workers) as executor:
+        list(tqdm(
+            executor.map(convert_one, mp4_files),
+            total=len(mp4_files),
+            desc="H.264 re-encode",
+            unit="video",
+        ))
+
+    shutil.rmtree(unzip_path_h265)
+    return unzip_path_h264
+
+def load_pai_dataset(text_field: str, max_records: int) -> List[Tuple[str, str, str]]:
+    """Load PAI dataset from local file."""
+    import os
+    from physical_ai_av import PhysicalAIAVDatasetInterface
+    CACHE_DIR = os.path.join(os.environ["HOME"], ".cache")
+    avdi = PhysicalAIAVDatasetInterface(
+        revision="ncore_test",
+        token=os.environ["HF_TOKEN"],
+        cache_dir=CACHE_DIR,
+    )
+
+    chunk_ids = list(range(max_records))
+    features = ["camera_front_wide_120fov"]
+    files_to_download = []
+    for cid in chunk_ids:
+        for feat in features:
+            if avdi.chunk_sensor_presence.at[cid, feat]:
+                files_to_download.append(
+                    avdi.features.get_chunk_feature_filename(cid, feat)
+                )
+
+    local_paths = avdi.download_files(files_to_download, force_download=True)
+
+    unzip_path_h265 = "/".join([i for i in local_paths[0].split("/")[:-1]]) + "_mp4"
+    os.system(f"mkdir -p {unzip_path_h265}")
+    print(unzip_path_h265)
+    for path in local_paths:
+        if not str(path).endswith(".zip"):
+            continue
+        with zipfile.ZipFile(path, "r") as zip_ref:
+            zip_ref.extractall(unzip_path_h265)
+        os.system(f"rm {unzip_path_h265}/*parquet")
+
+
+    ## Temporary fix for CDS to ingest videos with codec H264
+    unzip_path_h264 = "/".join([i for i in local_paths[0].split("/")[:-1]]) + "_mp4_h264"
+    unzip_path_h264 = encode_h265_to_h264(unzip_path_h265, unzip_path_h264)
+
+    records = []
+    for file in os.listdir(unzip_path_h264):
+        if not file.endswith(".mp4"):
+            continue
+        records.append((file.split(".")[0], f"{unzip_path_h264}/{file}", f"{text_field}"))
+    return records
+
+
 def main(argv: List[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Prepare dataset for CDS ingestion")
     parser.add_argument("config", help="Path to YAML or JSON config file")
@@ -145,6 +225,8 @@ def main(argv: List[str] | None = None) -> None:
         
         ds = load_dataset(repo, hf_config, split=split) if hf_config else load_dataset(repo, split=split)
         records = [(item[id_field], item[video_field], item[text_field]) for item in ds]
+    if source == "pai":
+        records = load_pai_dataset(text_field, max_records)
     elif source == "local":
         # Load from local file
         from scripts.evaluate_accuracy import load_local_dataset
@@ -157,7 +239,7 @@ def main(argv: List[str] | None = None) -> None:
     else:
         raise ValueError(f"Unsupported source {source}")
 
-    if max_records:
+    if max_records: # and source != "pai":
         records = records[: max_records]
 
     copy_dir = cfg.get("copy_videos_to")
