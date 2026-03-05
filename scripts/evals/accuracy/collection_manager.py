@@ -30,7 +30,7 @@ class CVDSCollectionManager:
         pipeline_id: str,
         dataset_name: str
     ) -> str:
-        collection_name = f"{dataset_name} Accuracy Test"
+        collection_name = dataset_name
         
         LOGGER.info("Creating collection: %s (pipeline: %s)", collection_name, pipeline_id)
         try:
