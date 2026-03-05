@@ -11,6 +11,7 @@ docker stop $(docker ps -q)
 make build-docker
 make install
 make install-cds-cli
+source .venv/bin/activate
 make test-integration-down && make test-integration-up
 
 # Download PAI dataset and ingest into CDS collection
