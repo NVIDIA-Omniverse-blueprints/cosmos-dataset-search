@@ -13,7 +13,7 @@
 .PHONY: help install build test lint format clean docker run
 .DEFAULT_GOAL := help
 
-PYTHON := python3.10
+PYTHON := python3.11
 UV := uv
 DOCKER_BUILDKIT := 1
 IMAGE_TAG ?= latest
@@ -264,7 +264,7 @@ test-integration-clean: ## Clean up integration test environment completely
 # Dataset Preparation
 # ==============================================================================
 
-# make prepare-dataset CONFIG=scripts/k400_test_500.yaml
+# make prepare-dataset CONFIG=scripts/pai_test_100.yaml
 prepare-dataset: check-install
 	@if [ -z "$(CONFIG)" ]; then \
 	  echo "$(RED)ERROR: CONFIG=<path_to_yaml> is required$(NC)"; exit 2; \
@@ -286,7 +286,16 @@ ingest-msrvtt: ## Ingest full MSRVTT dataset into collection
 
 ingest-msrvtt-small: ## Ingest 100 MSRVTT videos into collection (for quick testing)
 	@echo "$(BLUE)Ingesting MSRVTT dataset (100 videos) into collection...$(NC)"
-	$(MAKE) ingest INGEST_FLAGS="--dataset friedrichor/MSR-VTT --collection-name 'MSR-VTT Small Collection' --limit 100"
+	$(MAKE) ingest INGEST_FLAGS="--video-dir /home/bcostarendon/data/hf/PhysicalAI-Autonomous-Vehicles/camera/camera_front_wide_120fov --collection-name 'Test' --limit 4 --s3-endpoint http://localstack:4566 --num-workers 1"
+
+#video_dir=$$(.venv/bin/python -c "import json,pathlib,yaml; cfg=yaml.safe_load(open('$(CONFIG)')); p=pathlib.Path(cfg['output_jsonl']).expanduser(); d=json.loads(p.read_text().splitlines()[0]); print(pathlib.Path(d['video']).parent)"); \
+
+ingest-pai: CONFIG=scripts/pai_test_100.yaml
+ingest-pai: prepare-dataset  ## Ingest PAI dataset into collection
+	@echo "$(BLUE)Ingesting PAI dataset into collection...$(NC)"
+	video_dir=/home/bcostarendon/.cache/datasets--nvidia--PhysicalAI-Autonomous-Vehicles/snapshots/37de37f1ad178d25d6f604832b1ad7fa2c18bdec/camera/camera_front_wide_120fov_mp4_h264/; \
+	$(MAKE) ingest INGEST_FLAGS="--video-dir $$video_dir --collection-name 'PAI Collection' --s3-endpoint http://localstack:4566 --num-workers 1"
+
 
 # ==============================================================================
 # Accuracy / Benchmarking
