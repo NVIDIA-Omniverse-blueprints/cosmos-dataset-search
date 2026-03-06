@@ -177,15 +177,16 @@ def load_pai_dataset(text_field: str, max_records: int) -> List[Tuple[str, str, 
         os.system(f"rm {unzip_path_h265}/*parquet")
 
 
-    ## Temporary fix for CDS to ingest videos with codec H264
-    unzip_path_h264 = "/".join([i for i in local_paths[0].split("/")[:-1]]) + "_mp4_h264"
-    unzip_path_h264 = encode_h265_to_h264(unzip_path_h265, unzip_path_h264)
+    ## Uncomment to re-encode H265 -> H264 manually if missing access to 
+    ## NVCR NIM container: nvcr.io/nvstaging/nim/cosmos-embed1:1.1.0-43920210
+    # unzip_path_h264 = "/".join([i for i in local_paths[0].split("/")[:-1]]) + "_mp4_h264"
+    # unzip_path_h264 = encode_h265_to_h264(unzip_path_h265, unzip_path_h264)
 
     records = []
-    for file in os.listdir(unzip_path_h264):
+    for file in os.listdir(unzip_path_h265):
         if not file.endswith(".mp4"):
             continue
-        records.append((file.split(".")[0], f"{unzip_path_h264}/{file}", f"{text_field}"))
+        records.append((file.split(".")[0], f"{unzip_path_h265}/{file}", f"{text_field}"))
     return records
 
 
