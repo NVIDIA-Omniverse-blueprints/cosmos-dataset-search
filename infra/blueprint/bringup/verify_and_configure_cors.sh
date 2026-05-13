@@ -11,6 +11,7 @@
 
 ## CORS Verification and Configuration Script for CDS S3 Buckets
 ## Usage: ./verify_and_configure_cors.sh [-y|--apply]
+## Set CUSTOM_API_ENDPOINT env var to skip EKS auto-detection (e.g. OpenShift Route)
 
 set -e
 
@@ -24,18 +25,25 @@ if [[ "$1" == "-y" || "$1" == "--apply" ]]; then
     APPLY_CORS=true
 fi
 
-source ./configuration.sh
+# Source EKS configuration only when CUSTOM_API_ENDPOINT is not provided
+if [ -z "${CUSTOM_API_ENDPOINT:-}" ]; then
+    source ./configuration.sh
+fi
 
 echo "=============================================="
 echo "  S3 CORS Verification"
 echo "=============================================="
 
-# Get ingress hostname and determine CORS origin
-INGRESS_HOSTNAME=$(kubectl get ingress simple-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+# Get hostname: use CUSTOM_API_ENDPOINT if set, otherwise auto-detect from ingress
+if [ -n "${CUSTOM_API_ENDPOINT:-}" ]; then
+    VS_API="$CUSTOM_API_ENDPOINT"
+else
+    VS_API=$(kubectl get ingress simple-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+fi
 
 # Determine CORS origin based on ingress availability
-if [ -n "$INGRESS_HOSTNAME" ]; then
-    CORS_ORIGIN="https://$INGRESS_HOSTNAME"
+if [ -n "$VS_API" ]; then
+    CORS_ORIGIN="https://$VS_API"
     CORS_MODE="secure (ingress hostname)"
 else
     CORS_ORIGIN="*"
@@ -93,12 +101,15 @@ check_bucket() {
     fi
 }
 
-# Check main bucket
-check_bucket "$S3_BUCKET_NAME" "$AWS_REGION" "" "Main Bucket"
-MAIN_STATUS=$?
+# Check main bucket (only when S3_BUCKET_NAME is set, e.g. EKS)
+MAIN_STATUS=0
+if [ -n "${S3_BUCKET_NAME:-}" ]; then
+    check_bucket "$S3_BUCKET_NAME" "$AWS_REGION" "" "Main Bucket"
+    MAIN_STATUS=$?
+fi
 
-# Check custom bucket if different
-if [ "$CUSTOM_S3_BUCKET_NAME" != "$S3_BUCKET_NAME" ]; then
+# Check custom bucket if set and different from main
+if [ -n "${CUSTOM_S3_BUCKET_NAME:-}" ] && [ "${CUSTOM_S3_BUCKET_NAME:-}" != "${S3_BUCKET_NAME:-}" ]; then
     # Set up AWS profile for custom bucket
     PROFILE_NAME="${CUSTOM_S3_BUCKET_NAME}-profile"
     aws configure set aws_access_key_id "$CUSTOM_AWS_ACCESS_KEY_ID" --profile "$PROFILE_NAME" 2>/dev/null
@@ -111,13 +122,12 @@ fi
 
 echo ""
 echo "=============================================="
-if [ -n "$INGRESS_HOSTNAME" ]; then
-    echo "Ingress: https://$INGRESS_HOSTNAME"
-    echo "CORS origin: $CORS_ORIGIN ($CORS_MODE)"
+if [ -n "$VS_API" ]; then
+    echo "Endpoint: https://$VS_API"
 else
-    echo "Ingress: Not available"
-    echo "CORS origin: $CORS_ORIGIN ($CORS_MODE)"
+    echo "Endpoint: Not available"
 fi
+echo "CORS origin: $CORS_ORIGIN ($CORS_MODE)"
 
 if [ "$APPLY_CORS" = true ]; then
     echo "Mode: Auto-apply"

@@ -1,0 +1,387 @@
+{{- if .Values.openshift.enabled }}
+
+# Custom SCC: allows runAsUser for subchart pods (milvus-minio, kafka, etc.)
+# and skips recursive SELinux relabeling on NIM model PVCs.
+{{- if .Values.openshift.scc.create }}
+
+---
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.openshift.scc.serviceAccountName }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "visual-search.labels" . | nindent 4 }}
+
+---
+
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: {{ .Release.Name }}-nim
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+  annotations:
+    kubernetes.io/description: >-
+      Custom SCC for CDS pods. Allows containers to run as the UID defined
+      in their images and skips recursive SELinux relabeling on volume mounts.
+priority: 20
+allowHostDirVolumePlugin: false
+allowHostIPC: false
+allowHostNetwork: false
+allowHostPID: false
+allowHostPorts: false
+allowPrivilegeEscalation: true
+allowPrivilegedContainer: false
+allowedCapabilities: null
+defaultAddCapabilities: null
+fsGroup:
+  type: RunAsAny
+readOnlyRootFilesystem: false
+requiredDropCapabilities:
+  - KILL
+  - MKNOD
+  - SETUID
+  - SETGID
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: RunAsAny
+supplementalGroups:
+  type: RunAsAny
+users:
+  - system:serviceaccount:{{ .Release.Namespace }}:default
+  - system:serviceaccount:{{ .Release.Namespace }}:{{ .Values.openshift.scc.serviceAccountName }}
+  - system:serviceaccount:{{ .Release.Namespace }}:nim-cache-sa
+  {{- range $nimKey, $nimVal := .Values.nimOperator }}
+  {{- if and (kindIs "map" $nimVal) (hasKey $nimVal "service") }}
+  - system:serviceaccount:{{ $.Release.Namespace }}:{{ $nimVal.service.name }}
+  {{- end }}
+  {{- end }}
+volumes:
+  - configMap
+  - csi
+  - downwardAPI
+  - emptyDir
+  - ephemeral
+  - persistentVolumeClaim
+  - projected
+  - secret
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-nim-scc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:{{ .Release.Name }}-nim
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: nim-cache-sa
+    namespace: {{ .Release.Namespace }}
+  {{- range $nimKey, $nimVal := .Values.nimOperator }}
+  {{- if and (kindIs "map" $nimVal) (hasKey $nimVal "service") }}
+  - kind: ServiceAccount
+    name: {{ $nimVal.service.name }}
+    namespace: {{ $.Release.Namespace }}
+  {{- end }}
+  {{- end }}
+
+---
+
+# Anyuid SCC RoleBinding — grants the anyuid SCC to subchart service accounts
+# whose containers run as specific UIDs (etcd, kafka, minio, etc.).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Release.Name }}-anyuid-scc
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:anyuid
+subjects:
+  - kind: ServiceAccount
+    name: default
+    namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: {{ .Values.openshift.scc.serviceAccountName }}
+    namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: s3-access-sa
+    namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-kafka
+    namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-minio
+    namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-etcd
+    namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-zookeeper
+    namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: {{ .Release.Name }}-cosmos-embed
+    namespace: {{ .Release.Namespace }}
+  - kind: ServiceAccount
+    name: nim-cache-sa
+    namespace: {{ .Release.Namespace }}
+  {{- range $nimKey, $nimVal := .Values.nimOperator }}
+  {{- if and (kindIs "map" $nimVal) (hasKey $nimVal "service") }}
+  - kind: ServiceAccount
+    name: {{ $nimVal.service.name }}
+    namespace: {{ $.Release.Namespace }}
+  {{- end }}
+  {{- end }}
+{{- end }}
+
+# Nginx reverse proxy — single entry point for API + UI
+{{- if .Values.openshift.nginx.enabled }}
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-proxy-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "visual-search.labels" . | nindent 4 }}
+data:
+  default.conf: |
+    upstream api {
+      server {{ .Values.visualSearch.name }}:{{ .Values.visualSearch.port }};
+    }
+    upstream ui {
+      server {{ .Values.visualSearchReactUi.name | default "visual-search-react-ui" }}:8080;
+    }
+    server {
+      listen 8080;
+
+      location /api/ {
+        proxy_pass http://api/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size 500m;
+        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+      }
+
+      location / {
+        proxy_pass http://ui/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+      }
+
+      location /health {
+        return 200 'ok';
+        add_header Content-Type text/plain;
+      }
+    }
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-proxy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: nginx-proxy
+    {{- include "visual-search.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-proxy
+  template:
+    metadata:
+      labels:
+        app: nginx-proxy
+    spec:
+      containers:
+      - name: nginx
+        image: {{ .Values.openshift.nginx.image.repository }}:{{ .Values.openshift.nginx.image.tag }}
+        imagePullPolicy: {{ .Values.openshift.nginx.image.pullPolicy }}
+        ports:
+        - containerPort: 8080
+          name: http
+        resources:
+          {{- toYaml .Values.openshift.nginx.resources | nindent 10 }}
+        volumeMounts:
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d
+          readOnly: true
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /var/cache/nginx
+        - name: run
+          mountPath: /var/run
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: nginx-config
+        configMap:
+          name: nginx-proxy-config
+      - name: tmp
+        emptyDir: {}
+      - name: cache
+        emptyDir: {}
+      - name: run
+        emptyDir: {}
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-proxy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: nginx-proxy
+    {{- include "visual-search.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    app: nginx-proxy
+  ports:
+  - port: {{ .Values.openshift.nginx.service.port }}
+    targetPort: http
+    name: http
+
+{{- end }}
+
+# OpenShift Route
+{{- if .Values.openshift.route.enabled }}
+
+---
+
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Values.visualSearch.name }}
+  labels:
+    app: {{ .Values.visualSearch.name }}
+    {{- include "visual-search.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.openshift.route.host }}
+  host: {{ .Values.openshift.route.host | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    {{- if .Values.openshift.nginx.enabled }}
+    name: nginx-proxy
+    {{- else }}
+    name: {{ .Values.visualSearch.name }}
+    {{- end }}
+    weight: 100
+  port:
+    {{- if .Values.openshift.nginx.enabled }}
+    targetPort: http
+    {{- else }}
+    targetPort: {{ int .Values.env.GUNICORN_PORT }}
+    {{- end }}
+  tls:
+    termination: {{ .Values.openshift.route.tls.termination }}
+    {{- if .Values.openshift.route.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ .Values.openshift.route.tls.insecureEdgeTerminationPolicy }}
+    {{- end }}
+  wildcardPolicy: None
+{{- end }}
+
+# MinIO Route — exposes MinIO for browser access to video assets
+{{- if .Values.openshift.minio.route.enabled }}
+
+---
+
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Values.openshift.minio.route.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: minio
+    {{- include "visual-search.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.openshift.minio.route.host }}
+  host: {{ .Values.openshift.minio.route.host | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ .Values.openshift.minio.serviceName }}
+    weight: 100
+  port:
+    targetPort: {{ .Values.openshift.minio.port }}
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+{{- end }}
+
+# Secrets (Helm-managed)
+{{- if .Values.openshift.secrets.create }}
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ngc-api
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "visual-search.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  NGC_API_KEY: {{ .Values.openshift.secrets.ngcApiKey | default "" | quote }}
+
+{{- if .Values.openshift.secrets.ngcApiKey }}
+---
+{{ include "visual-search.ngcPullSecret" (list . "ngc-secret") }}
+---
+{{ include "visual-search.ngcPullSecret" (list . "nvcr-io") }}
+{{- end }}
+
+---
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: secret-encryption-key
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "visual-search.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  SECRETS_ENCRYPTION_KEY: {{ .Values.openshift.secrets.secretsEncryptionKey | default (randAlphaNum 32) | quote }}
+{{- end }}
+
+{{- end }}

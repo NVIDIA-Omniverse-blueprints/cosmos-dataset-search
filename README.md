@@ -73,6 +73,7 @@ Recommended for production deployments requiring scalability, high availability,
 #### Deployment Guides
 
 - **[AWS EKS Deployment](docs/docs/aws-eks-deployment.md)** - Deploy on Amazon Elastic Kubernetes Service
+- **[Red Hat OpenShift AI Deployment](docs/docs/openshift-deployment.md)** - Deploy on Red Hat OpenShift AI (RHOAI)
 
 ## Using CDS
 

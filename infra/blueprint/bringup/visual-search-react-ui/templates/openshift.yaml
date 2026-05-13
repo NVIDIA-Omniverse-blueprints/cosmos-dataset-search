@@ -1,0 +1,27 @@
+{{- if and .Values.openshift.enabled .Values.openshift.route.enabled (not .Values.openshift.nginx) }}
+{{/* Route only created when nginx proxy is NOT in use (standalone mode).
+     When nginx is enabled, the visual-search chart creates a single Route
+     that handles both API and UI traffic. */}}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Values.visualSearchReactUi.name }}
+  labels:
+    app: {{ .Values.visualSearchReactUi.name }}
+spec:
+  {{- if .Values.openshift.route.host }}
+  host: {{ .Values.openshift.route.host | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ .Values.visualSearchReactUi.name }}
+    weight: 100
+  port:
+    targetPort: {{ .Values.visualSearchReactUi.containerPort }}
+  tls:
+    termination: {{ .Values.openshift.route.tls.termination }}
+    {{- if .Values.openshift.route.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ .Values.openshift.route.tls.insecureEdgeTerminationPolicy }}
+    {{- end }}
+  wildcardPolicy: None
+{{- end }}

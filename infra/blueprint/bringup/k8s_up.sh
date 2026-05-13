@@ -26,8 +26,6 @@ source ./configuration.sh
 
 ./secrets.sh
 
-kubectl apply -f visual-search/templates/secret-access-rbac.yaml
-
 helm upgrade --install cosmos-embed ./triton-cosmos-embed \
   --values cosmos-embed-override.yaml \
   --timeout 45m

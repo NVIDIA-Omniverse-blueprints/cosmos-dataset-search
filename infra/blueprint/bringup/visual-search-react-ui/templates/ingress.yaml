@@ -8,7 +8,7 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
-{{- if .Values.global.ingress.enabled -}}
+{{- if and .Values.global.ingress.enabled (not (and .Values.openshift.enabled .Values.openshift.route.enabled)) -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

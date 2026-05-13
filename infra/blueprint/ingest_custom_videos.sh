@@ -45,10 +45,15 @@ else
     aws configure set aws_access_key_id "${CUSTOM_AWS_ACCESS_KEY_ID}" --profile "${PROFILE_NAME}"
     aws configure set aws_secret_access_key "${CUSTOM_AWS_SECRET_ACCESS_KEY}" --profile "${PROFILE_NAME}"
     aws configure set region "${CUSTOM_AWS_REGION}" --profile "${PROFILE_NAME}"
+    if [[ -n "${CUSTOM_ENDPOINT_URL:-}" ]]; then
+        aws configure set endpoint_url "${CUSTOM_ENDPOINT_URL}" --profile "${PROFILE_NAME}"
+    fi
 fi
 
 # Determine execution context (CI vs local)
-if [[ -n "${GITLAB_CI:-}" ]]; then
+if [[ -n "${CUSTOM_API_ENDPOINT:-}" ]]; then
+  KUBECTL_CMD="${CUSTOM_KUBECTL_CMD:-oc}"
+elif [[ -n "${GITLAB_CI:-}" ]]; then
   echo "Running in GitLab CI environment..."
   KUBECTL_CMD="kubectl"
 else
@@ -57,23 +62,41 @@ else
 fi
 
 # Get ingress hostname
-VS_API=$($KUBECTL_CMD get ingress simple-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+if [[ -n "${CUSTOM_API_ENDPOINT:-}" ]]; then
+  VS_API="$CUSTOM_API_ENDPOINT"
+else
+  VS_API=$($KUBECTL_CMD get ingress simple-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+fi
 echo "Deployment URL: https://$VS_API/cosmos-dataset-search"
 
-# Create Kubernetes secret with AWS credentials
+# Create Kubernetes secret with AWS credentials.
+# The visual-search app reads secrets from the "default" namespace,
+# so when running on OpenShift (CUSTOM_API_ENDPOINT set) we target "default".
 SECRETS_NAME="${CUSTOM_S3_BUCKET_NAME}-secrets-videos"
+if [[ -n "${CUSTOM_API_ENDPOINT:-}" ]] && [[ -z "${CUSTOM_SECRET_NAMESPACE:-}" ]]; then
+  CUSTOM_SECRET_NAMESPACE="default"
+fi
+NS_FLAG=""
+if [[ -n "${CUSTOM_SECRET_NAMESPACE:-}" ]]; then
+  NS_FLAG="-n $CUSTOM_SECRET_NAMESPACE"
+fi
 
 # Check if secret already exists
-if $KUBECTL_CMD get secret $SECRETS_NAME &>/dev/null; then
+if $KUBECTL_CMD get secret $SECRETS_NAME $NS_FLAG &>/dev/null; then
     echo "Kubernetes secret '$SECRETS_NAME' already exists. Deleting and recreating..."
-    $KUBECTL_CMD delete secret $SECRETS_NAME
+    $KUBECTL_CMD delete secret $SECRETS_NAME $NS_FLAG
 fi
 
 echo "Creating Kubernetes secret with AWS credentials..."
-$KUBECTL_CMD create secret generic $SECRETS_NAME \
+ENDPOINT_FLAG=""
+if [[ -n "${CUSTOM_ENDPOINT_URL:-}" ]]; then
+    ENDPOINT_FLAG="--from-literal=endpoint_url=$CUSTOM_ENDPOINT_URL"
+fi
+$KUBECTL_CMD create secret generic $SECRETS_NAME $NS_FLAG \
   --from-literal=aws_access_key_id=$CUSTOM_AWS_ACCESS_KEY_ID \
   --from-literal=aws_secret_access_key=$CUSTOM_AWS_SECRET_ACCESS_KEY \
-  --from-literal=aws_region=$CUSTOM_AWS_REGION
+  --from-literal=aws_region=$CUSTOM_AWS_REGION \
+  $ENDPOINT_FLAG
 
 ### Now we need to create a collection for the data.
 ### The tag file tells the UI how to download images and videos.
