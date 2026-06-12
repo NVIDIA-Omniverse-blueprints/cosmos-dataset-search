@@ -124,5 +124,5 @@ async def test_train_linear_classifier_happy_path(monkeypatch):
 
     resp = await sr.train(req)
     assert hasattr(resp, "weights") and resp.weights.coef == [[0.11, 0.22]] and resp.weights.intercept == [0.33]
-    assert isinstance(resp.model, str) and len(resp.model) > 0
+    assert resp.model == ""  # model field is deprecated; filtering now uses weights
 
