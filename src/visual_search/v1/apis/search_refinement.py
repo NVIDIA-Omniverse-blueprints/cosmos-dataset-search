@@ -11,9 +11,7 @@
 """Endpoint to train a collection of search refinement models."""
 
 
-import base64
-import pickle
-from typing import Final, List, Tuple, Union
+from typing import List, Tuple, Union
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
@@ -32,13 +30,7 @@ from ...common.models import (
 from ...common.pipelines import get_document_stores, run_linear_probe_pipeline
 from ...logger import logger
 from .document_indexing import create_safe_name
-
-PICKLE_PROTOCOL: Final[int] = 5
 router = APIRouter()
-
-
-def _serialize_model(model, protocol: int = PICKLE_PROTOCOL) -> str:
-    return base64.b64encode(pickle.dumps(model, protocol=protocol)).decode("utf-8")
 
 
 @router.post(
@@ -196,14 +188,11 @@ async def train(
         )
 
     elif search_refinement_request.model_type == SearchRefinementMode.LINEAR_CLASSIFIER:
-        clf, weights = run_linear_classifier_training(
+        _, weights = run_linear_classifier_training(
             labelled_embeddings=labelled_embeddings
         )
 
-        response = LinearClassifierResponse(
-            weights=weights,
-            model=_serialize_model(clf),
-        )
+        response = LinearClassifierResponse(weights=weights)
 
     else:
         raise HTTPException(
