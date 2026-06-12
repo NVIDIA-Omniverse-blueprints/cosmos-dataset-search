@@ -10,8 +10,6 @@
 
 """Haystack components for document filtering models."""
 
-import base64
-import pickle
 from typing import Any, Dict, List
 
 import numpy as np
@@ -20,11 +18,38 @@ from haystack import Document, component
 from src.haystack.serializer import SerializerMixin
 
 
+def _linear_classifier_predictions(
+    embeddings: np.ndarray, clf: Dict[str, Any]
+) -> np.ndarray:
+    weights = clf.get("weights", clf)
+    try:
+        coef = np.asarray(weights["coef"], dtype=np.float32)
+        intercept = np.asarray(weights["intercept"], dtype=np.float32)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(
+            "clf must contain linear classifier weights with coef and intercept"
+        ) from exc
+
+    if coef.ndim != 2 or intercept.ndim != 1:
+        raise ValueError("clf weights must contain 2D coef and 1D intercept")
+    if coef.shape[0] != 1 or intercept.shape[0] != 1:
+        raise ValueError("clf weights must describe a binary linear classifier")
+    if embeddings.shape[1] != coef.shape[1]:
+        raise ValueError(
+            "clf coef dimension "
+            f"{coef.shape[1]} does not match embedding dimension "
+            f"{embeddings.shape[1]}"
+        )
+
+    scores = embeddings @ coef.T + intercept
+    return scores[:, 0] > 0
+
+
 @component
 class LinearClassifierFilter(SerializerMixin):
     """Class definition for a linear classifier which is used to filter results based on the classification score.
 
-    The classifier object is passed as base64 encoded string.
+    The classifier weights are passed as coefficients and intercept terms.
     """
 
     @component.output_types(documents=List[Document])
@@ -42,10 +67,8 @@ class LinearClassifierFilter(SerializerMixin):
         if documents[0].embedding is None:
             raise TypeError("To enable filtering, please set reconstuct=True")
 
-        best_model = pickle.loads(base64.b64decode(clf["model"])).get_best_model()
-
         all_embeddings = np.array([doc.embedding for doc in documents])
-        preds = best_model.predict(all_embeddings)
+        preds = _linear_classifier_predictions(all_embeddings, clf)
 
         filtered_documents = []
         for doc, pred in zip(documents, preds):

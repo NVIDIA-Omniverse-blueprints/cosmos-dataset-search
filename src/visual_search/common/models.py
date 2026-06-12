@@ -1045,7 +1045,8 @@ class LinearClassifierBase(BaseModel):
 class LinearClassifierResponse(BaseModel):
     weights: LinearClassifierBase = Field(description="Coefficients and intercept")
     model: str = Field(
-        description="Pickled LinearClassifier model b64 bytes as a utf-8 string to be parsed"
+        default="",
+        description="Deprecated. Classifier filtering uses weights instead of serialized models."
     )
 
 
