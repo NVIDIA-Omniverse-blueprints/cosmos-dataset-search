@@ -131,7 +131,7 @@ services:
               capabilities: [gpu]
     shm_size: 16g
     tmpfs:
-      - /tmp/ram:size=2g
+      - /tmp/ram:size=2g,mode=1777
     ports:
       - "9000:8000"
       - "9001:8001"
