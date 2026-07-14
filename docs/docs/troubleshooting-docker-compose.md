@@ -185,6 +185,12 @@ sudo systemctl restart docker
 docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
 ```
 
+### Cosmos-Embed NIM Issues
+
+#### Video Embedding Requests Fail with HTTP 500
+
+If video requests fail with `All N inputs failed during processing` (`Permission denied: '/tmp/ram/...'` in the Triton log) while text requests work, ensure the `cosmos-embed` tmpfs mount in `deploy/standalone/docker-compose.build.yml` is `- /tmp/ram:size=2g,mode=1777`, then recreate the container (`docker compose -f docker-compose.build.yml up -d --force-recreate cosmos-embed`).
+
 ### Network Issues
 
 #### Cannot Access Web UI
