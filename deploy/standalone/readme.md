@@ -74,6 +74,8 @@ The standalone deployment package provides everything needed to run the Visual S
     visual-search           | [INFO] Application startup complete.
     ```
 
+> **Note**: The `cosmos-embed` service mounts its temp directory to `/tmp/ram:size=2g,mode=1777`. Without `mode=1777` the NIM, running as non-root, cannot write temp video files and all video embedding requests fail with `Permission denied` / HTTP 500.
+
 ## Accessing the Service
 
 You can access the visual search service three ways: via **vius client**, via **react UI**, via command line using **CURL** and REST API.
