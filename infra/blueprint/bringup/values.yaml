@@ -28,12 +28,6 @@ global:
     keys:
       dbHost: "dep"
 
-milvus:
-  name: "milvus"
-  namespace: "default"
-  db: "default"
-  port: 19530
-
 storageSpec:
   name: "storage"
   port: 8080
@@ -86,3 +80,280 @@ visualSearchReactUi:
     tag: "1.0.0"
   port: 8080
   containerPort: 8080
+
+# ==========================================
+# Subchart defaults (umbrella chart only)
+# ==========================================
+
+# cosmos-embed subchart — enabled by default (standalone Deployment).
+# Set to false when using the NIM Operator instead.
+# When using k8s_up.sh, cosmos-embed is installed separately
+# with cosmos-embed-override.yaml. These defaults apply to umbrella deploys.
+cosmos-embed:
+  enabled: true
+  resources:
+    limits:
+      nvidia.com/gpu: 1
+      memory: "16Gi"
+      cpu: "2"
+    requests:
+      nvidia.com/gpu: 1
+      memory: "8Gi"
+      cpu: "1"
+  nim:
+    ngcAPISecret: ngc-api
+  persistence:
+    enabled: true
+    size: 50Gi
+  service:
+    name: cosmos-embed
+  envVars:
+    USE_CUDA_IPC: "1"
+    ENABLE_CUDA_MPS: "1"
+  extraVolumes:
+    tmp-ram:
+      emptyDir:
+        medium: Memory
+        sizeLimit: 8Gi
+  extraVolumeMounts:
+    tmp-ram:
+      mountPath: /tmp/ram
+  startupProbe:
+    enabled: true
+    path: /v1/health/ready
+    initialDelaySeconds: 60
+    periodSeconds: 10
+    failureThreshold: 180
+  readinessProbe:
+    enabled: true
+    path: /v1/health/ready
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  livenessProbe:
+    enabled: true
+    path: /v1/health/live
+    initialDelaySeconds: 60
+    periodSeconds: 30
+
+# milvus subchart values.
+# Note: milvus.name/namespace/db/port are consumed by the visual-search
+# subchart templates (not the milvus subchart).
+milvus:
+  name: "milvus"
+  namespace: "default"
+  db: "default"
+  port: 19530
+  image:
+    all:
+      repository: "milvusdb/milvus"
+      tag: "v2.4.4"
+  minio:
+    enabled: false
+  externalS3:
+    enabled: true
+    host: "s3.${AWS_REGION}.amazonaws.com"
+    port: "443"
+    bucketName: "${S3_BUCKET_NAME}"
+    useSSL: true
+    useIAM: true
+    cloudProvider: "aws"
+    accessKey: ""
+    secretKey: ""
+    region: "${AWS_REGION}"
+  serviceAccount:
+    create: false
+    name: "s3-access-sa"
+  pulsar:
+    enabled: false
+  pulsarv3:
+    enabled: false
+  rootCoordinator:
+    replicas: 1
+    activeStandby:
+      enabled: true
+    resources:
+      requests:
+        cpu: "0.5"
+        memory: 1Gi
+      limits:
+        cpu: "1"
+        memory: 2Gi
+  indexCoordinator:
+    replicas: 1
+    activeStandby:
+      enabled: true
+    resources:
+      requests:
+        cpu: "0.25"
+        memory: 256Mi
+      limits:
+        cpu: "0.5"
+        memory: 0.5Gi
+  queryCoordinator:
+    replicas: 1
+    activeStandby:
+      enabled: true
+    resources:
+      requests:
+        cpu: "0.5"
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+  dataCoordinator:
+    replicas: 1
+    activeStandby:
+      enabled: true
+    resources:
+      requests:
+        cpu: "0.5"
+        memory: 4Gi
+      limits:
+        cpu: "1"
+        memory: 8Gi
+  proxy:
+    replicas: 1
+    resources:
+      requests:
+        cpu: "0.5"
+        memory: 2Gi
+      limits:
+        cpu: "1"
+        memory: 4Gi
+  queryNode:
+    replicas: 1
+    resources:
+      requests:
+        cpu: "12"
+        memory: 96Gi
+        ephemeral-storage: "100Gi"
+      limits:
+        cpu: "15"
+        memory: 120Gi
+        ephemeral-storage: "150Gi"
+    extraEnv:
+      - name: GOGC
+        value: "14"
+      - name: GOMEMLIMIT
+        value: "110GiB"
+      - name: KNOWHERE_ENABLE_GPU
+        value: "false"
+  dataNode:
+    resources:
+      requests:
+        cpu: 6
+        memory: 24Gi
+        ephemeral-storage: "40Gi"
+      limits:
+        cpu: 8
+        memory: 31Gi
+        ephemeral-storage: "40Gi"
+    extraEnv:
+      - name: GOGC
+        value: "50"
+      - name: GOMEMLIMIT
+        value: "24GiB"
+      - name: MEM_LIMIT
+        value: "24Gi"
+  indexNode:
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+        memory: "12Gi"
+        cpu: "3500m"
+        ephemeral-storage: "40Gi"
+      requests:
+        nvidia.com/gpu: 1
+        memory: "12Gi"
+        cpu: "3500m"
+        ephemeral-storage: "40Gi"
+    extraEnv:
+      - name: GOGC
+        value: "50"
+      - name: GOMEMLIMIT
+        value: "12GiB"
+      - name: MEM_LIMIT
+        value: "12Gi"
+      - name: KNOWHERE_ENABLE_GPU
+        value: "true"
+  extraConfigFiles:
+    user.yaml: |+
+      dataCoord:
+        import:
+          taskRetention: 1800
+      queryCoord:
+        memoryUsageMaxDifferencePercentage: 10
+      queryNode:
+        enableDisk: true
+        adapt_for_cpu: true
+        mmap:
+          vectorField: true
+          vectorIndex: true
+          scalarField: true
+          scalarIndex: true
+          growingMmapEnabled: true
+      indexNode:
+        scheduler:
+          buildParallel: 8
+      segment:
+        maxSize: 4Gi
+  etcd:
+    replicaCount: 1
+    autoCompactionMode: revision
+    autoCompactionRetention: "1"
+    extraEnvVars:
+      - name: ETCD_QUOTA_BACKEND_BYTES
+        value: "8589934592"
+      - name: ETCD_HEARTBEAT_INTERVAL
+        value: "500"
+      - name: ETCD_ELECTION_TIMEOUT
+        value: "25000"
+      - name: ETCD_SNAPSHOT_COUNT
+        value: "10000"
+    persistence:
+      enabled: true
+      size: 30Gi
+    resources:
+      requests:
+        cpu: 2
+        memory: 4Gi
+      limits:
+        cpu: 4
+        memory: 8Gi
+  kafka:
+    enabled: true
+    replicaCount: 3
+    image:
+      registry: public.ecr.aws
+      repository: bitnami/kafka
+      tag: 3.7.1
+    defaultReplicationFactor: 1
+    offsetsTopicReplicationFactor: 1
+    heapOpts: "-Xmx8192M -Xms8192M"
+    zookeeper:
+      enabled: true
+      replicaCount: 1
+      heapSize: 2048
+      image:
+        registry: public.ecr.aws
+        repository: bitnami/zookeeper
+        tag: 3.8.4
+      persistence:
+        enabled: true
+        size: 20Gi
+      resources:
+        requests:
+          cpu: 1
+          memory: 2Gi
+        limits:
+          cpu: 2
+          memory: 4Gi
+    resources:
+      limits:
+        cpu: 2
+        memory: 12Gi
+        ephemeral-storage: "40Gi"
+      requests:
+        cpu: 2
+        memory: 12Gi
+        ephemeral-storage: "40Gi"

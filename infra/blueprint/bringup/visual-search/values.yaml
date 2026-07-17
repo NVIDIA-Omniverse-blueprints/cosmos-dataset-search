@@ -8,15 +8,136 @@
 # without an express license agreement from NVIDIA CORPORATION or
 # its affiliates is strictly prohibited.
 
+# Default values for visual-search.
+
 replicaCount: 1
-image: "nvcr.io/nvidian/visual-search:latest"
-containerPort: 8888
-resources:
-  requests:
-    cpu: 500m
+
+imagePullSecret: "nvcr-io"
+
+visualSearch:
+  name: "visual-search"
+  image:
+    repository: "nvcr.io/nvidia/blueprint/cosmos-dataset-search"
+    tag: "1.0.0"
+  port: 8888
+  containerPort: 8888
+
+visualSearchReactUi:
+  name: "visual-search-react-ui"
+
+milvus:
+  name: "milvus"
+  namespace: "default"
+  db: "default"
+  port: 19530
+
+cosmosEmbed:
+  name: "cosmos-embed"
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+
 env:
+  MAX_DOCS_PER_UPLOAD: "10000"
   GUNICORN_PORT: "8888"
+  GUNICORN_TIMEOUT: "300"
   GUNICORN_WORKERS: "1"
   FASTAPI_ROOT_PATH: "/api"
-  MAX_DOCS_PER_UPLOAD: "10000"
-  GUNICORN_TIMEOUT: "300"
+  NVIDIA_API_KEY: ""
+
+resources:
+  requests:
+    visualSearchCpu: "500m"
+
+# ---------------------------------------------------------------------------
+# OpenShift support (disabled by default — zero impact on vanilla Kubernetes)
+# ---------------------------------------------------------------------------
+openshift:
+  enabled: false
+  route:
+    enabled: false
+    host: ""
+    tls:
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+  scc:
+    create: false
+    serviceAccountName: "cosmos-cds-sa"
+  secrets:
+    create: false
+    ngcApiKey: ""
+    secretsEncryptionKey: ""
+  minio:
+    route:
+      enabled: false
+      name: "minio"
+      host: ""
+    serviceName: "cosmos-cds-minio"
+    port: 9000
+  nginx:
+    enabled: false
+    image:
+      repository: nginxinc/nginx-unprivileged
+      tag: "1.25.3-alpine"
+      pullPolicy: IfNotPresent
+    service:
+      port: 8080
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "50m"
+      limits:
+        memory: "128Mi"
+        cpu: "200m"
+
+# ---------------------------------------------------------------------------
+# NIM Operator integration (disabled by default).
+# When enabled AND the NIM Operator CRD is present on the cluster, NIMCache +
+# NIMService resources are created instead of the subchart Deployment.
+# Disable the cosmos-embed subchart (cosmos-embed.enabled: false) in your
+# overlay to avoid running both paths.
+# ---------------------------------------------------------------------------
+nimOperator:
+  cosmosEmbed:
+    enabled: false
+    replicas: 1
+    service:
+      name: "cosmos-embed-nim"
+    image:
+      repository: nvcr.io/nim/nvidia/cosmos-embed1
+      tag: "1.0.0"
+      pullPolicy: Always
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+      requests:
+        nvidia.com/gpu: 1
+    storage:
+      pvc:
+        create: true
+        size: "50Gi"
+        volumeAccessMode: ReadWriteOnce
+        storageClass: ""
+    secrets:
+      pullSecret: "ngc-secret"
+      authSecret: "ngc-api"
+    nodeSelector: {}
+    tolerations: []
+    env:
+      - name: NIM_HTTP_API_PORT
+        value: "8000"
+    expose:
+      service:
+        name: http
+        type: ClusterIP
+        port: 8000
+    startupProbe:
+      enabled: true
+      probe:
+        httpGet:
+          path: /v1/health/ready
+          port: 8000
+        initialDelaySeconds: 60
+        periodSeconds: 30
+        failureThreshold: 120

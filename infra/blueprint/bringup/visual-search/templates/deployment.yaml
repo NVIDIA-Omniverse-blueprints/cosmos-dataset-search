@@ -30,7 +30,11 @@ spec:
         - sh
         - -c
         - >-
+          {{- if .Values.openshift.enabled }}
+          until nc -z -v -w30 {{ .Release.Name }}-milvus.{{ .Release.Namespace }}.svc.cluster.local {{ .Values.milvus.port }};
+          {{- else }}
           until nc -z -v -w30 {{ .Values.milvus.name }}.{{ .Values.milvus.namespace }}.svc.cluster.local {{ .Values.milvus.port }};
+          {{- end }}
           do sleep 5; done
       containers:
       - name: {{ .Values.visualSearch.name }}
@@ -51,19 +55,36 @@ spec:
         - name: GUNICORN_WORKERS
           value: {{ .Values.env.GUNICORN_WORKERS | quote }}
         - name: MILVUS_DOCUMENT_STORE_URI
+          {{- if .Values.openshift.enabled }}
+          value: http://{{ .Release.Name }}-milvus.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.milvus.port }}
+          {{- else }}
           value: http://{{ .Values.milvus.name }}.{{ .Values.milvus.namespace }}.svc.cluster.local:{{ .Values.milvus.port }}
+          {{- end }}
         - name: MILVUS_DB
           value: {{ .Values.milvus.db | quote }}
         - name: FASTAPI_ROOT_PATH
           value: {{ .Values.env.FASTAPI_ROOT_PATH | quote }}
         - name: NVIDIA_API_KEY
+          {{- if .Values.openshift.enabled }}
+          valueFrom:
+            secretKeyRef:
+              name: ngc-api
+              key: NGC_API_KEY
+          {{- else }}
           value: {{ .Values.env.NVIDIA_API_KEY | quote }}
+          {{- end }}
         - name: SECRETS_ENCRYPTION_KEY
           valueFrom:
             secretKeyRef:
               name: secret-encryption-key
               key: SECRETS_ENCRYPTION_KEY
         - name: COSMOS_EMBED_NIM_URI
+          {{- if .Values.nimOperator.cosmosEmbed.enabled }}
+          value: {{ .Values.nimOperator.cosmosEmbed.service.name }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.nimOperator.cosmosEmbed.expose.service.port }}
+          {{- else if .Values.openshift.enabled }}
+          value: {{ .Values.cosmosEmbed.name }}.{{ .Release.Namespace }}.svc.cluster.local:{{ index .Values.cosmosEmbed.ports 0 "port" }}
+          {{- else }}
           value: {{ .Values.cosmosEmbed.name }}.{{ .Values.global.namespace }}.svc.cluster.local:{{ index .Values.cosmosEmbed.ports 0 "port" }}
+          {{- end }}
       imagePullSecrets:
       - name: {{ .Values.imagePullSecret }}

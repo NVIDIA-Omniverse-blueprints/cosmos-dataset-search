@@ -20,7 +20,10 @@ trap 'popd > /dev/null' EXIT
 
 
 ### CI-specific: Check K8s deployment status and configure CLI
-if [[ -n "${GITLAB_CI:-}" ]]; then
+if [[ -n "${CUSTOM_API_ENDPOINT:-}" ]]; then
+  VS_API="$CUSTOM_API_ENDPOINT"
+  echo "Using API endpoint from CUSTOM_API_ENDPOINT: https://$VS_API/api"
+elif [[ -n "${GITLAB_CI:-}" ]]; then
   echo "Running in GitLab CI - checking K8s deployment..."
   source ./configuration.sh
 

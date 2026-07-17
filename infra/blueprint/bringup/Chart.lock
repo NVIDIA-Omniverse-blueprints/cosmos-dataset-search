@@ -1,0 +1,15 @@
+dependencies:
+- name: visual-search
+  repository: file://visual-search
+  version: 0.0.1
+- name: visual-search-react-ui
+  repository: file://visual-search-react-ui
+  version: 0.0.1
+- name: nvidia-nim-cosmos-embed
+  repository: file://triton-cosmos-embed
+  version: 1.0.0
+- name: milvus
+  repository: https://zilliztech.github.io/milvus-helm
+  version: 4.2.58
+digest: sha256:35d9b8dcdf70db591795d3aba80e0ed4cac2a388df3c3e8474331abe797c86f4
+generated: "2026-05-11T14:05:49.860084305+03:00"

@@ -1,0 +1,127 @@
+# values-openshift.yaml — OpenShift overlay for Cosmos Dataset Search.
+#
+# Usage:
+#   helm upgrade --install <release-name> infra/blueprint/bringup \
+#     --namespace <your-project> \
+#     -f infra/blueprint/bringup/values-openshift.yaml \
+#     --set "visual-search.openshift.secrets.ngcApiKey=$NGC_API_KEY" \
+#     --timeout 45m
+#
+# This file enables OpenShift-specific resources (Route, SCC, nginx proxy,
+# credential Secrets) and switches from subchart Deployments to NIM Operator
+# managed services.  Cluster-specific values (tolerations, storageClass, NGC
+# keys) should be passed via --set at install time.
+
+# ---------------------------------------------------------------------------
+# OpenShift features
+# ---------------------------------------------------------------------------
+visual-search:
+  openshift:
+    enabled: true
+    route:
+      enabled: true
+    scc:
+      create: true
+    secrets:
+      create: true
+    minio:
+      route:
+        enabled: true
+    nginx:
+      enabled: true
+
+  # ---------------------------------------------------------------------------
+  # NIM Operator integration — deploys cosmos-embed via NIMCache + NIMService.
+  # The NIM Operator handles model downloading, caching, and GPU scheduling.
+  # Requires: NIM Operator installed, NGC image-pull and API secrets in namespace.
+  # ---------------------------------------------------------------------------
+  nimOperator:
+    cosmosEmbed:
+      enabled: true
+      replicas: 1
+      service:
+        name: "cosmos-embed-nim"
+      image:
+        repository: nvcr.io/nim/nvidia/cosmos-embed1
+        tag: "1.0.0"
+        pullPolicy: Always
+      resources:
+        limits:
+          nvidia.com/gpu: 1
+        requests:
+          nvidia.com/gpu: 1
+      storage:
+        pvc:
+          create: true
+          size: "50Gi"
+          volumeAccessMode: ReadWriteOnce
+          storageClass: ""
+      secrets:
+        pullSecret: "ngc-secret"
+        authSecret: "ngc-api"
+      nodeSelector: {}
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+        # Add cluster-specific tolerations as needed:
+        # - key: <your-gpu-taint-key>
+        #   operator: Equal
+        #   value: "true"
+        #   effect: NoSchedule
+      env:
+        - name: NIM_HTTP_API_PORT
+          value: "8000"
+      expose:
+        service:
+          name: http
+          type: ClusterIP
+          port: 8000
+      startupProbe:
+        enabled: true
+        probe:
+          httpGet:
+            path: /v1/health/ready
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          failureThreshold: 120
+
+visual-search-react-ui:
+  openshift:
+    enabled: true
+    nginx: true
+
+# ---------------------------------------------------------------------------
+# Disable cosmos-embed subchart Deployment — NIM Operator manages the lifecycle.
+# ---------------------------------------------------------------------------
+cosmos-embed:
+  enabled: false
+
+# ---------------------------------------------------------------------------
+# Milvus — enable built-in MinIO storage.
+# ---------------------------------------------------------------------------
+milvus:
+  minio:
+    enabled: true
+    mode: standalone
+  externalS3:
+    enabled: false
+  serviceAccount:
+    create: true
+    name: "s3-access-sa"
+  indexNode:
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+    # Tolerations for GPU-tainted nodes (uncomment and adjust for your cluster).
+    # tolerations:
+    #   - key: "nvidia.com/gpu"
+    #     operator: Exists
+    #     effect: NoSchedule
+  etcd:
+    serviceAccount:
+      create: true
+  kafka:
+    zookeeper:
+      serviceAccount:
+        create: true
