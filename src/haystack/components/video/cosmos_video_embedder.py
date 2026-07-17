@@ -38,6 +38,8 @@ class CosmosEmbedClient:
     
     def embed_videos(self, video_inputs: List[str]) -> List[List[float]]:
         """Embed videos using cosmos-embed service with base64 data."""
+
+        logger.error(f"Embedding videos: {video_inputs=}")
         if not video_inputs:
             return []
             
@@ -102,9 +104,21 @@ class CosmosEmbedClient:
                         raise RuntimeError("Cosmos-embed service temporarily unavailable")
                     else:
                         logger.error(f"HTTP error from cosmos-embed: {e}")
+                        body = e.response.text
+                        logger.error(
+                            "Cosmos-embed HTTP %s response body: %s",
+                            e.response.status_code,
+                            (body[:3000] if body else "(empty)"),
+                        )
                         raise RuntimeError(f"Cosmos-embed service error: {e}")
                 except requests.exceptions.RequestException as e:
                     logger.error(f"Failed to get embeddings from cosmos-embed: {e}")
+                    body = e.response.text
+                    logger.error(
+                        "Cosmos-embed HTTP %s response body: %s",
+                        e.response.status_code,
+                        (body[:3000] if body else "(empty)"),
+                    )
                     raise RuntimeError(f"Cosmos-embed service error: {e}")
             return embeddings
         else:
@@ -160,13 +174,26 @@ class CosmosEmbedClient:
                 raise RuntimeError("Cosmos-embed service temporarily unavailable")
             else:
                 logger.error(f"HTTP error from cosmos-embed: {e}")
+                body = e.response.text
+                logger.error(
+                    "Cosmos-embed HTTP %s response body: %s",
+                    e.response.status_code,
+                    (body[:3000] if body else "(empty)"),
+                )
                 raise RuntimeError(f"Cosmos-embed service error: {e}")
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to get embeddings from cosmos-embed: {e}")
+            body = e.response.text
+            logger.error(
+                "Cosmos-embed HTTP %s response body: %s",
+                e.response.status_code,
+                (body[:3000] if body else "(empty)"),
+            )
             raise RuntimeError(f"Cosmos-embed service error: {e}")
     
     def embed_texts(self, texts: List[str]) -> List[List[float]]:
         """Embed texts using cosmos-embed service."""
+        logger.error(f"Embedding texts: {texts=}")
         if not texts:
             return []
             
@@ -219,9 +246,21 @@ class CosmosEmbedClient:
                 raise RuntimeError("Cosmos-embed service temporarily unavailable")
             else:
                 logger.error(f"HTTP error from cosmos-embed: {e}")
+                body = e.response.text
+                logger.error(
+                    "Cosmos-embed HTTP %s response body: %s",
+                    e.response.status_code,
+                    (body[:3000] if body else "(empty)"),
+                )
                 raise RuntimeError(f"Cosmos-embed service error: {e}")
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to get text embeddings from cosmos-embed: {e}")
+            body = e.response.text
+            logger.error(
+                "Cosmos-embed HTTP %s response body: %s",
+                e.response.status_code,
+                (body[:3000] if body else "(empty)"),
+            )
             raise RuntimeError(f"Cosmos-embed service error: {e}")
 
 
@@ -323,7 +362,8 @@ class CosmosVideoDocumentEmbedder(SerializerMixin, CosmosEmbedMixin):
             if not video_inputs:
                 logger.warning(f"No video inputs prepared for batch {batch_start//self.batch_size + 1}")
                 continue
-
+            
+            print(f"{video_inputs=}")
             # Single API call for this batch (up to 64 videos)
             embeddings_batch = self._client.embed_videos(video_inputs)
             total_api_calls += 1

@@ -118,7 +118,7 @@ services:
       - cvds
 
   cosmos-embed:
-    image: ${COSMOS_EMBED_IMAGE:-nvcr.io/nim/nvidia/cosmos-embed1:1.0.0}
+    image: ${COSMOS_EMBED_IMAGE:-nvcr.io/nvstaging/nim/cosmos-embed1:1.1.0-43920210}
     container_name: cosmos-embed
     runtime: nvidia
     # ── expose one GPU in dev; in CI you can stub with 0

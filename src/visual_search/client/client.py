@@ -62,9 +62,10 @@ IMAGE_EXTENSIONS: Final = [".jpeg", ".jpg", ".png", ".JPEG"]
 SUPPORTED_MIME_TYPES: Final = ["video/mp4", "image/jpeg", "image/png", "episode/zip"]
 SUPPORTED_EXISTENCE_CHECKS: Final = ["must", "with_timeout", "skip"]
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+root = logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
 )
+
 
 urllib3.disable_warnings()
 
@@ -170,9 +171,11 @@ class Collections:
             Can also be set via CVDS_INDEX_TYPE environment variable.
         """
 
+        logging.info(f"Loading profile...")
         cfg = load_profile(profile)
+        logging.info(f"Profile loaded. Loading")
         headers = get_headers(cfg)
-
+        
         # Load configuration from yaml file
         if config_yaml is not None:
             config_path = Path(config_yaml)
@@ -183,9 +186,11 @@ class Collections:
             default_yaml_path = Path(__file__).parent / "default.yaml"
             config_path = default_yaml_path
 
+        logging.info(f"Loading config file...")
         with config_path.open("r", encoding="utf-8") as fp:
             yaml_content = yaml.safe_load(fp)
         configuration = CollectionsConfig(**yaml_content)
+        logging.info(f"Config loaded. Overriding index type...")
 
         # Override index_type if specified via parameter or environment variable
         override_index_type = index_type or os.getenv("CVDS_INDEX_TYPE")
@@ -206,9 +211,11 @@ class Collections:
                 else MetadataConfig()
             ),
         }
+        logging.info(f"collection_id: {collection_id}")
+        req = f"{cfg.api_endpoint}/v1/collections" + (f"?id={collection_id}" if collection_id else "")
+        logging.info(f"Posting request: \n\t{req}")
         response = requests.post(
-            f"{cfg.api_endpoint}/v1/collections"
-            + (f"?id={collection_id}" if collection_id else ""),
+            req,
             json=payload,
             headers=headers,
             # Accept self-signed TLS
@@ -574,9 +581,11 @@ class Ingest:
                 f"{existence_check} not supported! Available are {SUPPORTED_EXISTENCE_CHECKS}"
             )
 
+        logging.info(f"Loading profile...")
         cfg = load_profile(profile)
+        logging.info(f"Profile loaded. Loading token...")
         token = get_token(cfg)
-
+        logging.info(f"Token loaded. Checking collection exists...")
         # double check collection exists
         collection = Collections.get(collection_id=collection_id, profile=profile)
         if not collection["collection"]:
@@ -584,7 +593,7 @@ class Ingest:
                 f"{collection_id} not found! "
                 "Please create it with `cds collections create --help`."
             )
-
+        logging.info(f"Collection exists. Loading metadata...")
         metadata_dict = dict()
         if metadata_json is not None:
             metadata_json = Path(metadata_json)
@@ -592,9 +601,9 @@ class Ingest:
                 raise FileNotFoundError(f"{metadata_json} not found!")
             with metadata_json.open("r") as fp:
                 metadata_dict = json.load(fp)
-
+        logging.info(f"Metadata loaded. Loading base path...")
         base_path = directory_path if strip_directory_path else None
-
+        logging.info(f"Base path loaded. Initializing Ray...")
         # paginating through files, especially from remote key-value store,
         # can be time-consuming, so we spawn a separate actor that fetches files
         # and feeds the batches to Ray batch processor pool asynchronously.
@@ -610,7 +619,9 @@ class Ingest:
             limit=limit,
             nb_consumer=num_workers,
         )
+        logging.info(f"Fetcher task initialized. Initializing processors...")
         fetcher_task = data_fetcher.fetch_data.remote()
+        logging.info(f"Fetcher task started. Initializing processors...")
         processors = [
             FileBatchProcessor.remote(  # type: ignore
                 job_queue,
@@ -627,7 +638,7 @@ class Ingest:
             for _ in range(num_workers)
         ]
         processor_tasks = [processor.process_data.remote() for processor in processors]  # type: ignore
-
+        logging.info(f"Processors initialized. Setting up monitoring console...")
         # set up monitoring console
         console = Console()
         console.log(f":brain: Spawned {len(processor_tasks)} file batch processors.")

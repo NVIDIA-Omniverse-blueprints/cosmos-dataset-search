@@ -30,7 +30,7 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11,<3.12"
 
 dependencies = [
     "boto3==1.28.11",
@@ -48,11 +48,12 @@ dependencies = [
     "gunicorn==23.0.0",
     "haystack-ai==2.11.2",
     "lightning-utilities==0.11.0",
-    "numpy==2.2.4",
+    "numpy==2.4.2",
     "open-clip-torch==2.24.0",
     "opentelemetry-api==1.24.0",
     "packaging==24.2",
     "pandas==2.2.2",
+    "physical-ai-av==0.1.1",
     "pillow==10.4.0",
     "prometheus-fastapi-instrumentator==6.1.0",
     "pymilvus[bulk_writer,milvus_lite]==2.6.2",
@@ -66,7 +67,7 @@ dependencies = [
     "requests-toolbelt==1.0.0",
     "requests[socks]==2.32.3",
     "scikit-learn==1.5.2",
-    "scipy==1.15.2",
+    "scipy==1.17.1",
     "setuptools==78.1.1",
     "torch==2.6.0+cu118",
     "torchaudio==2.6.0+cu118",

@@ -26,7 +26,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "test")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "test")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
-os.environ.setdefault("AWS_ENDPOINT_URL", "http://localstack:4566")
+os.environ["AWS_ENDPOINT_URL"] = "http://localstack:4566"
 
 SAMPLE_VIDEO_DIR = Path(__file__).parent / "sample_data"
 SAMPLE_VIDEO_FILE = SAMPLE_VIDEO_DIR / "video1.mp4"
@@ -98,9 +98,10 @@ def main() -> None:
         key_prefix = "cosmos-tests"
         key = f"{key_prefix}/video1.mp4"
         s3.upload_file(Filename=str(SAMPLE_VIDEO_FILE), Bucket=bucket, Key=key)
-        s3_path = f"s3://{bucket}/{key_prefix}"
-
+        s3_path = f"s3://{bucket}/{key}"
+        logging.info(f"s3_path: {s3_path}")
         logging.info("Uploaded sample video to %s (key %s)", bucket, key)
+        logging.info("AWS_ENDPOINT_URL=%s", os.environ.get("AWS_ENDPOINT_URL"))
         ingest_stats = client.ingest.files(
             directory_path=s3_path,
             collection_id=collection_id,
