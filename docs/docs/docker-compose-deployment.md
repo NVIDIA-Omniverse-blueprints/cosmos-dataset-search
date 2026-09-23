@@ -18,9 +18,11 @@ Docker Compose deployment provides a complete CDS stack running on a single node
 - Small-scale deployments
 - Prototyping and experimentation
 
-The deployment includes all required services: Visual Search API, Cosmos-embed NIM, Milvus vector database, LocalStack S3 storage, and the React web UI.
+The deployment includes the Visual Search API, the source-built CE1 OSS PyTorch
+service, Milvus vector database, and LocalStack S3 storage.
 
-**Time Estimate**: First deployment takes 15-30 minutes (includes model downloads). Subsequent deployments take 2-5 minutes.
+**Time Estimate**: First deployment takes 15-30 minutes after the model weights
+are available locally. Subsequent deployments take 2-5 minutes.
 
 ## Deployment Steps
 
@@ -43,7 +45,7 @@ ls -la
 CDS includes multiple Milvus configuration files:
 
 - **Default (Recommended)**: `deploy/standalone/milvus_localstack.yaml` - Optimized for CVDS with LocalStack
-- **Official Reference**: `deploy/standalone/milvus_official.yaml` - Standard official Milvus configuration [github.com/milvus-io/milvus/blob/master/configs/milvus.yaml](https://github.com/milvus-io/milvus/blob/master/configs/milvus.yaml)
+- **Official Reference**: `deploy/standalone/milvus_official_2_4_4.yaml` - Included Milvus 2.4.4 reference configuration; use a version-compatible configuration for your deployed Milvus image.
 
 **Key optimizations in `milvus_localstack.yaml` (default):**
 - GPU memory configuration for shared GPU with cosmos-embed
@@ -60,18 +62,18 @@ milvus:
   volumes:
     # Option 1: Use LocalStack-optimized config (default, recommended)
     - ./milvus_localstack.yaml:/milvus/configs/milvus.yaml
-    
+
     # Option 2: Use official Milvus config (requires manual LocalStack setup)
-    # - ./milvus_official.yaml:/milvus/configs/milvus.yaml
+    # - ./milvus_official_2_4_4.yaml:/milvus/configs/milvus.yaml
 ```
 
-**If using `milvus_official.yaml`, you MUST manually configure**:
+**If using `milvus_official_2_4_4.yaml`, you MUST manually configure**:
 1. S3/LocalStack settings (`minio.address: localstack`, `minio.port: 4566`)
 2. GPU memory allocation (`gpu.initMemSize`, `gpu.maxMemSize`)
 3. Storage scheme (`common.storage.scheme: s3`)
 
 **To use a custom config:**
-1. Create a new copy and Update S3 settings to point to LocalStack (see existing `milvus_localstack.yaml` or `milvus_official.yaml`)
+1. Create a new copy and update S3 settings to point to LocalStack (see existing `milvus_localstack.yaml` or `milvus_official_2_4_4.yaml`).
 2. Set GPU memory allocation based on your hardware
 
 For GPU memory configuration details, see [GPU Memory Management Guide](../guides/gpu-memory-management.md).
@@ -105,54 +107,80 @@ vi deploy/standalone/.env
    ```bash
    DATA_DIR=/path/to/your/data
    ```
-   
+
    **Important**: This directory must exist before proceeding. Create it if it doesn't exist:
    ```bash
    mkdir -p $HOME/cds-data
    ```
-   
+
    This folder is used to enable faster LocalStack uploads by providing direct file system access to the containerized S3 service.
 
 **Default Variables (typically no changes needed for local deployment):**
 - `AWS_ACCESS_KEY_ID=test` (for LocalStack)
 - `AWS_SECRET_ACCESS_KEY=test` (for LocalStack)
 - `AWS_ENDPOINT_URL=http://localstack:4566`
-- `COSMOS_EMBED_NIM_URI=http://cosmos-embed-nim:8000`
+- `COSMOS_EMBED_URI=http://cosmos-embed:8000`
 - `GUNICORN_PORT=8888`
 
-**Optional Variables for Remote Access:**
+**Trusted local HTTP media servers:**
 
-3. **Web UI Configuration** - Only required if accessing the UI from a different host (not localhost)
-   
-   **When to set these**: If your web browser is running on a different machine than the CDS deployment (e.g., deploying on a remote server and accessing from your laptop), you need to update these three variables with your deployment host's IP address or hostname.
-   
-   **Variables to update:**
-   
-   - **`CDS_API_URL`** - API endpoint URL for the web UI
-     ```bash
-     CDS_API_URL=http://<deployment-host-ip>:8888/v1
-     ```
-   
-   - **`CDS_CDN_URL`** - CDN URL for serving media assets (LocalStack S3)
-     ```bash
-     CDS_CDN_URL=http://<deployment-host-ip>:4566/cosmos-test-bucket
-     ```
-   
-   - **`CDS_UI_URL`** - Web UI base URL
-     ```bash
-     CDS_UI_URL=http://<deployment-host-ip>:8080/
-     ```
-   
-   **Example for remote access** (deploying on a server with IP 192.168.1.100):
-   ```bash
-   CDS_API_URL=http://192.168.1.100:8888/v1
-   CDS_CDN_URL=http://192.168.1.100:4566/cosmos-test-bucket
-   CDS_UI_URL=http://192.168.1.100:8080/
-   ```
+CE1 accepts remote media over HTTPS by default. To ingest from a trusted plain
+HTTP server, add its exact origin (scheme, host, and port, without a path) to
+`COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HTTP_ORIGINS`. For a server listening on
+port 8680 of the Docker host, use URLs beginning with
+`http://host.docker.internal:8680` and configure:
+
+```bash
+COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HTTP_ORIGINS=http://host.docker.internal:8680
+```
+
+Separate multiple origins with commas. Do not add public HTTPS origins to this
+setting. Run `make test-integration-up` after changing `.env` so Compose
+recreates the CE1 service with the new value.
 
 For a complete list of configuration options, see the comments in the `.env` file.
 
-### Step 4: Validate Environment Configuration
+### Step 4: Install Dependencies
+
+Install Python dependencies and set up the development environment:
+
+```bash
+make install
+```
+
+This command:
+- Creates a Python virtual environment using UV
+- Installs all Python dependencies with GPU support
+- Generates protobuf definitions for service communication
+- Sets up the complete development environment
+
+**Expected output**: Should complete without errors. Look for messages about dependency installation and protobuf generation.
+
+### Step 5: Download CE1 OSS Model Weights
+
+The default deployment is offline at runtime and expects the
+`nvidia/Cosmos-Embed1-224p` files at `COSMOS_EMBED_MODEL_HOST_PATH`, which
+defaults to `$HOME/.cache/cosmos-embed1`. Download the model snapshot configured
+by `COSMOS_EMBED_HF_MODEL_ID` and `COSMOS_EMBED_HF_REVISION`:
+
+```bash
+make download-ce1-model
+```
+
+The public model snapshot does not require `hf auth login`. The command creates
+the model directory and makes it readable by container UID 999. It does not add
+weights to the source tree or download them when the service starts.
+
+`make build-docker` runs the same check automatically. If the configured model
+directory already contains a complete CE1 snapshot, it skips the download.
+
+Before executing any model or processor code, CE1 verifies the snapshot's Python, configuration, tokenizer and weight files against the trusted `src/cosmos_embed_oss/model_manifest.json` packaged with the application. Missing, altered or additional loadable files prevent readiness with a model-integrity error. This check also covers reused snapshots and Kubernetes PVC mounts; startup includes reading all weight shards once.
+
+The supported snapshot is `nvidia/Cosmos-Embed1-224p` at `787e0b996f5260a71ad474a283c90539a2e12986`. Opt-in online loading downloads that exact revision, verifies it, then loads both model and processor locally. A different model revision requires review and an application manifest update, not only an environment-variable change. There is no verification-disable switch. Keep model files mounted read-only and protect the host and writable HF module cache from untrusted writers; startup verification does not protect against a compromised host changing files afterward.
+
+The model mount is read-only; the Hugging Face module cache is a separate writable volume. Keep the one-shot `cosmos-embed-cache-init` dependency enabled so the non-root CE1 service can write its cache on a fresh deployment. For private storage or custom S3 endpoints, configure the [ingestion source settings](import-url-security.md).
+
+### Step 6: Validate Environment Configuration
 
 Before proceeding, validate your environment configuration:
 
@@ -171,23 +199,7 @@ This script:
 
 If validation fails, review the error messages and update your `.env` file accordingly, then run the validation script again.
 
-### Step 5: Install Dependencies
-
-Install Python dependencies and set up the development environment:
-
-```bash
-make install
-```
-
-This command:
-- Creates a Python virtual environment using UV
-- Installs all Python dependencies with GPU support
-- Generates protobuf definitions for service communication
-- Sets up the complete development environment
-
-**Expected output**: Should complete without errors. Look for messages about dependency installation and protobuf generation.
-
-### Step 6: Build Docker Images
+### Step 7: Build Docker Images
 
 Build all required Docker images:
 
@@ -197,12 +209,16 @@ make build-docker
 
 This command builds:
 - Python base image with CUDA support
+- CE1 OSS PyTorch service image
 - Visual Search service image
-- Supporting service images
+
+Before building, it downloads the configured CE1 snapshot only when the model
+directory is missing or incomplete. The model remains a runtime bind mount and
+is not copied into the CE1 image.
 
 **Time Estimate**: 10-20 minutes on first build. Subsequent builds use Docker cache and are much faster (1-2 minutes).
 
-### Step 7: Launch Services
+### Step 8: Launch Services
 
 Start the complete CDS stack:
 
@@ -212,16 +228,18 @@ make test-integration-up
 
 This command:
 - Starts Milvus vector database with etcd
-- Launches Cosmos-embed NIM service (GPU-accelerated)
+- Launches the CE1 OSS PyTorch service with the local model files
 - Starts Visual Search API service
 - Launches LocalStack S3-compatible storage
-- Starts React Web UI
 - Waits for all services to become healthy
 
 **Important Notes**:
-- **First run**: Cosmos-embed NIM will download model weights (~20GB). This takes 10-15 minutes depending on your internet connection.
-- **GPU check**: The NIM service requires GPU access. If it fails to start, verify your GPU setup with `nvidia-smi`.
-- **Monitor progress**: Watch the logs to track model download and service startup.
+- **Model files**: The service does not download model weights at runtime. The
+  host directory configured by `COSMOS_EMBED_MODEL_HOST_PATH` must exist and
+  be readable by UID 999.
+- **GPU check**: The CE1 OSS service requires GPU access. If it fails to start,
+  verify your GPU setup with `nvidia-smi`.
+- **Monitor progress**: Watch the logs to track service startup.
 
 The expected results from a successful deployment should match
 
@@ -235,28 +253,25 @@ cd deploy/standalone && docker compose -f docker-compose.build.yml up -d
  ✔ Container localstack                 Healthy                                                                                            1.2s
  ✔ Container milvus                     Healthy                                                                                            4.9s
  ✔ Container standalone-validate-env-1  Exited                                                                                             0.7s
+ ✔ Container standalone-cosmos-embed-cache-init-1 Exited                                                                                   0.7s
  ✔ Container cosmos-embed               Healthy                                                                                           64.2s
  ✔ Container visual-search              Started                                                                                            0.2s
- ✔ Container cosmos-vds-web-ui          Started                                                                                            0.2s
 
 ----------------------------------------
 Waiting for services to be ready...
 This may take a few minutes for GPU services to initialize...
 python scripts/wait_for_services.py
-INFO:__main__:Waiting for services: milvus, cosmos-embed, visual-search, react-ui
+INFO:__main__:Waiting for services: milvus, cosmos-embed, visual-search
 INFO:__main__:Checking milvus at http://localhost:9091/healthz
 INFO:__main__:milvus is ready
 INFO:__main__:Checking cosmos-embed at http://localhost:9000/v1/health/ready
 INFO:__main__:cosmos-embed is ready
 INFO:__main__:Checking visual-search at http://localhost:8888/health
 INFO:__main__:visual-search is ready
-INFO:__main__:Checking react-ui at http://localhost:8080/
-INFO:__main__:react-ui is ready
 INFO:__main__:All services are ready!
 INFO:__main__:Service check completed in 18.24s
 INFO:__main__:All services are ready for testing!
 
-Check the UI at http://localhost:8080/cosmos-dataset-search
 ```
 You can monitor the startup process:
 
@@ -265,7 +280,7 @@ You can monitor the startup process:
 make test-integration-logs
 
 # Or view specific service logs
-docker compose -f deploy/standalone/docker-compose.build.yml logs -f cosmos-embed-nim
+docker compose -f deploy/standalone/docker-compose.build.yml logs -f cosmos-embed
 ```
 
 ### Verify Deployment (Optional)
@@ -278,7 +293,7 @@ curl http://localhost:8888/health
 
 # Expected response: "OK"
 
-# Check Cosmos-embed NIM
+# Check the CE1 OSS embedding service
 curl http://localhost:9000/v1/health/ready
 
 # Expected response: {"status":"ready"}
@@ -288,8 +303,6 @@ curl http://localhost:8888/v1/pipelines
 
 # Expected response: JSON list of available pipelines
 
-# Check UI is responding
-curl http://localhost:8080/cosmos-dataset-search
 ```
 
 All health checks should return successful responses. If any service fails, see the [Troubleshooting section](#troubleshooting).
@@ -320,23 +333,6 @@ cds pipelines list
 
 
 ## Accessing the Services
-
-### Web UI
-
-Access the interactive web interface at:
-
-```
-http://localhost:8080/cosmos-dataset-search
-```
-The web browser must be running on the localhost for access to succeed. 
-
-The UI provides:
-- Text-to-video and video-to-video search interface
-- Collection browsing and management
-- Real-time search results with video previews
-- Data curation tools
-
-**Note**: You'll need to create a collection and ingest data before performing searches. See [Testing the Deployment](#testing-the-deployment) below.
 
 ### API Documentation
 
@@ -403,14 +399,6 @@ cds search --collection-ids <collection-id> \
   --top-k 5
 ```
 
-### Test via Web UI
-
-Open the web UI (`http://localhost:8080/cosmos-dataset-search`) and:
-1. Select the ingested collection
-2. Enter a text query (e.g., "person walking", "cat playing")
-3. View the search results with video previews
-4. Try video-to-video search by uploading a query video
-
 ## Managing the Deployment
 
 ### Important Note on Data Persistence
@@ -457,10 +445,9 @@ For detailed service management, including viewing logs, restarting individual s
 |---------|----------|---------|
 | Visual Search API | http://localhost:8888 | REST API for search operations |
 | API Documentation | http://localhost:8888/v1/docs | Interactive API docs (Swagger) |
-| Cosmos-embed NIM | http://localhost:9000 | Embedding service |
+| CE1 OSS | http://localhost:9000 | Embedding service |
 | Milvus Database | localhost:19530 | Vector database (internal) |
 | LocalStack S3 | http://localhost:4566 | S3-compatible storage (internal) |
-| Web UI | http://localhost:8080/cosmos-dataset-search | Interactive web interface |
 
 ## Troubleshooting
 
@@ -471,8 +458,5 @@ If you encounter issues during deployment or operation, see the [Docker Compose 
 After successfully deploying CDS, proceed to:
 
 1. **[CDS User Guide](user-guide.md)** - Learn how to interact with CDS
-   
-   The user guide covers three interaction methods:
-   - [UI User Guide](ui-user-guide.md) - Web interface usage
-   - [CLI User Guide](cli-user-guide.md) - Command-line operations
-   - [API User Guide](api-user-guide.md) - REST API usage and examples
+
+   The user guide covers CLI and REST API usage for this release.

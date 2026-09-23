@@ -1,12 +1,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 # ============================================================================ #
 #  src/visual_search/v1/apis/bulk_indexing.py                                  #
@@ -16,7 +21,6 @@
 from __future__ import annotations
 
 from typing import Any
-import re
 
 from fastapi import APIRouter, HTTPException
 from pymilvus import BulkInsertState, MilvusException
@@ -32,6 +36,11 @@ from src.visual_search.common.pipelines import (
     EnabledPipeline,
     enabled_pipelines,
     get_document_stores,
+)
+from src.visual_search.common.remote_fetch import (
+    FetchPolicyError,
+    validate_s3_endpoint,
+    validate_s3_paths,
 )
 from src.visual_search.logger import logger
 from src.visual_search.v1.apis.utils.milvus_utils import (
@@ -125,6 +134,14 @@ async def insert_data(request: InsertDataRequest):
             - 400 if schema validation fails or pipeline is disabled
             - 500 if Milvus fails to return a job ID
     """
+    # Validate every path and the endpoint before schema reads or job creation.
+    # fsspec otherwise accepts local files, HTTP and chained protocols here.
+    try:
+        keys = validate_s3_paths(request.parquet_paths)
+        validate_s3_endpoint(request.endpoint_url)
+    except FetchPolicyError as error:
+        raise HTTPException(400, str(error)) from error
+
     pipeline = _resolve_pipeline(request.collection_name)
     store = _get_milvus_store(pipeline)
 
@@ -143,18 +160,10 @@ async def insert_data(request: InsertDataRequest):
             raise HTTPException(404, f"File not found: {path}")
 
     job_ids = []
-    for file in request.parquet_paths:
-        # Validate and extract S3 path
-        s3_match = re.split(r"^(s3://[^/]+/)", file, 1)
-        if len(s3_match) < 3 or not s3_match[2]:
-            raise HTTPException(
-                400, 
-                f"Invalid S3 path format: '{file}'. Must be in format 's3://bucket/path/to/file.parquet'"
-            )
-        
+    for key in keys:
         job_id = store.bulk_insert_files(
             collection_name=safe_coll,
-            file_paths=[s3_match[2]],
+            file_paths=[key],
             **opts,
         )
         if not job_id:

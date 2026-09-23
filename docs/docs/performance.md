@@ -10,8 +10,8 @@ This document provides comprehensive performance benchmarks for the Cosmos Video
 
 All benchmarks were conducted on NVIDIA L40 GPU hardware with optimized Milvus configurations.
 
-> **Note:** The benchmark uses the optimized Milvus configuration from [`deploy/standalone/milvus_l40_standalone_optimized.yaml`](../deploy/standalone/milvus_l40_standalone_optimized.yaml).  
-To apply this configuration, ensure it is mounted in [`deploy/standalone/docker-compose.build.yml`](../deploy/standalone/docker-compose.build.yml) under the `milvus` service (using a `volumes` entry). For example:
+> **Note:** The benchmark uses the optimized Milvus configuration from [`deploy/standalone/milvus_l40_standalone_optimized.yaml`](../../deploy/standalone/milvus_l40_standalone_optimized.yaml).
+To apply this configuration, ensure it is mounted in [`deploy/standalone/docker-compose.build.yml`](../../deploy/standalone/docker-compose.build.yml) under the `milvus` service (using a `volumes` entry). For example:
 
 ```yaml
 services:
@@ -175,7 +175,7 @@ When measured independently (without S3 I/O overhead), the GPU_CAGRA indexing pe
 
 The system uses a conservative GPU memory allocation strategy:
 
-- **Cosmos-embed NIM**: ~12 GB (embedding model)
+- **CE1 OSS service**: ~12 GB (embedding model)
 - **Milvus GPU Pool**: 13.4 GB active (configured: 16GB init / 30GB max)
 - **Available Headroom**: ~28 GB unused
 
@@ -239,7 +239,7 @@ The system uses a conservative GPU memory allocation strategy:
 
 ### Overview
 
-Video ingestion benchmarks measure the end-to-end performance of processing video files, generating embeddings using Cosmos-embed NIM, and storing them in Milvus. This represents the real-world use case of ingesting video datasets.
+Video ingestion benchmarks measure the end-to-end performance of processing video files, generating embeddings using CE1 OSS service, and storing them in Milvus. This represents the real-world use case of ingesting video datasets.
 
 ### How to Run Video Ingestion Benchmarks
 
@@ -271,7 +271,18 @@ python3 scripts/evals/video_ingestion_performance/http_file_host.py \
 This will:
 - Start an HTTP server on port 8234
 - Generate a CSV file (`hosted_files.csv`) with video URLs
-- Output the base URL (e.g., `http://10.63.179.185:8234`)
+- Output the base URL (e.g., `http://192.0.2.10:8234`)
+
+Allow that exact trusted HTTP origin in `deploy/standalone/.env`, using the base
+URL printed by the server without a trailing path:
+
+```bash
+COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HTTP_ORIGINS=http://192.0.2.10:8234
+```
+
+Then run `make test-integration-up` to recreate the CE1 service with the new
+value. Multiple trusted HTTP origins must be comma-separated. HTTPS media does
+not require this setting.
 
 **Parameters:**
 - `--url-host-mode`: How to determine the host URL (`interface`, `localhost`, or `ip`)
@@ -305,7 +316,7 @@ python3 scripts/evals/video_ingestion_performance/url_ingestion.py \
   --max-videos 1000 \
   --batch-size 64 \
   --base-url http://localhost:8888 \
-  --nim-base-url http://localhost:9000 \
+  --cosmos-embed-base-url http://localhost:9000 \
   --measure-embed-delta \
   --csv-out report.csv
 ```
@@ -316,16 +327,20 @@ python3 scripts/evals/video_ingestion_performance/url_ingestion.py \
 - `--max-videos`: Maximum number of videos to process
 - `--batch-size`: Number of videos per batch sent to embedding service
 - `--base-url`: Visual search API endpoint
-- `--nim-base-url`: Cosmos-embed NIM endpoint
-- `--measure-embed-delta`: Measure NIM embedding latency separately
+- `--cosmos-embed-base-url`: CE1 OSS service endpoint
+- `--measure-embed-delta`: Measure CE1 OSS service embedding latency separately
 - `--csv-out`: Output CSV file for detailed per-batch metrics
 
 ### MSR-VTT 1000 Videos Benchmark
 
+> **Legacy baseline:** The static figures in this section predate the
+> source-built CE1 OSS backend. Re-run the command above before using results
+> as CE1 OSS performance evidence.
+
 **Test Configuration:**
 - **Dataset**: MSR-VTT test set (1000 videos)
 - **Video Format**: MP4
-- **Embedding Model**: Cosmos-embed NIM (running on same L40 GPU)
+- **Embedding Model**: Legacy pre-OSS service (running on same L40 GPU)
 - **Batch Size**: 64 videos per batch
 - **Total Batches**: 16 batches (15 full batches of 64 + 1 partial batch of 40)
 - **Video Hosting**: Local HTTP server (port 8234)
@@ -352,7 +367,7 @@ python3 scripts/evals/video_ingestion_performance/url_ingestion.py \
 | **Avg Latency** | 3.14 seconds |
 | **Max Latency** | 4.25 seconds |
 
-**Cosmos-embed NIM (Embedding Generation):**
+**Legacy Embedding Service (Embedding Generation):**
 
 | Metric | Value |
 |--------|-------|
@@ -360,7 +375,7 @@ python3 scripts/evals/video_ingestion_performance/url_ingestion.py \
 | **Avg Latency** | 2.75 seconds |
 | **Max Latency** | 2.96 seconds |
 
-**CDS Overhead (CDS API - NIM):**
+**CDS Overhead (CDS API - Legacy Embedding Service):**
 
 | Metric | Value |
 |--------|-------|
@@ -371,7 +386,7 @@ python3 scripts/evals/video_ingestion_performance/url_ingestion.py \
 
 **Key Insights:**
 
-1. **Embedding Generation Dominates**: The Cosmos-embed NIM takes ~2.75s per batch (64 videos), which is **87.6%** of total processing time. This is the primary bottleneck.
+1. **Embedding Generation Dominates**: The legacy embedding service takes ~2.75s per batch (64 videos), which is **87.6%** of total processing time. Re-measure this for CE1 OSS.
 
 2. **CDS API Overhead is Minimal**: The CDS API overhead (video download from HTTP, Milvus insertion, orchestration) is only ~0.39s per batch (**12.4%** of total time), showing efficient pipeline implementation.
 
@@ -385,7 +400,7 @@ python3 scripts/evals/video_ingestion_performance/url_ingestion.py \
 
 Sample of per-batch performance :
 
-| Batch | Size | CDS Latency (s) | NIM Latency (s) | Overhead (s) |
+| Batch | Size | CDS Latency (s) | Legacy Embed Latency (s) | Overhead (s) |
 |-------|------|-----------------|-----------------|--------------|
 | 1 | 64 | 4.25 | 2.86 | 1.39 |
 | 2 | 64 | 2.92 | 2.77 | 0.16 |
@@ -398,7 +413,7 @@ Sample of per-batch performance :
 - First batch has higher latency (4.25s) due to cold start / initialization
 - Subsequent batches stabilize around 3.0-3.3s
 - Last batch (40 videos) is proportionally faster (2.09s)
-- NIM latency is very consistent (2.75s ± 0.1s)
+- The legacy embedding-service latency was consistent (2.75s ± 0.1s)
 
 ### Video Ingestion Optimization Opportunities
 
@@ -409,14 +424,14 @@ Sample of per-batch performance :
    - Recommendation: Test batch sizes 16, 32, 64 to find optimal balance
 
 2. **Dedicated GPU for Embedding**
-   - Current: Cosmos-embed NIM shares L40 GPU with Milvus
+   - Current: The embedding service shares an L40 GPU with Milvus
    - Alternative: Dedicated GPU for embeddings
    - Benefit: Eliminate GPU contention, potentially 20-30% throughput improvement
 
 3. **Parallel Processing**
    - Current: Single-threaded batch processing
    - Alternative: Multiple parallel workers with smaller batches, `cds` cli implements Ray workers for ingestion
-   - Benefit: Better utilization of multi-core CPU for video decoding and HTTP downloads
+   - Benefit: Overlap downloads and request preparation. CDS 1.2.0 CE1 video decoding is GPU-only; these historical measurements do not benchmark the new runtime.
 
 ---
 
@@ -438,7 +453,7 @@ python3 scripts/evals/video_ingestion_performance/latency_test.py \
   --verbose \
   --collection-id <collection_id> \
   --csv-out latency_report.csv \
-  --nim-base-url http://localhost:9000 \
+  --cosmos-embed-base-url http://localhost:9000 \
   --query-pool-size 200 \
   --duration 60 \
   --top-k 20
@@ -447,7 +462,7 @@ python3 scripts/evals/video_ingestion_performance/latency_test.py \
 **Parameters:**
 - `--base-url`: Visual search API endpoint
 - `--collection-id`: Target collection ID
-- `--nim-base-url`: Cosmos-embed NIM endpoint
+- `--cosmos-embed-base-url`: CE1 OSS service endpoint
 - `--query-pool-size`: Number of diverse queries to generate (default: 200)
 - `--duration`: Test duration in seconds (default: 60)
 - `--top-k`: Number of results to retrieve per query (default: 20)
@@ -457,10 +472,13 @@ python3 scripts/evals/video_ingestion_performance/latency_test.py \
 1. Generate a diverse pool of text queries
 2. Measure baseline API latency (health checks)
 3. Run continuous searches for the specified duration
-4. Measure NIM embedding latency separately
+4. Measure CE1 OSS service embedding latency separately
 5. Report detailed latency statistics and breakdowns
 
 ### 10 Million Embeddings Search Benchmark
+
+> **Legacy baseline:** The static figures below predate the source-built CE1
+> OSS backend. Re-run the command above to produce current CE1 OSS results.
 
 **Test Configuration:**
 - **Collection Size**: 10,000,000 embeddings (256-dim)
@@ -487,7 +505,7 @@ python3 scripts/evals/video_ingestion_performance/latency_test.py \
 |-----------|-------------|------------|
 | **Total End-to-End** | 0.317 seconds | 100% |
 | **Milvus Search** | 0.305 seconds | 96.2% |
-| **Cosmos-embed NIM** | 0.007 seconds | 2.2% |
+| **Legacy Embedding Service** | 0.007 seconds | 2.2% |
 | **Network/API Overhead** | 0.004 seconds | 1.3% |
 | **Visual Search API Baseline** | 0.004 seconds | 1.3% |
 
@@ -495,7 +513,7 @@ python3 scripts/evals/video_ingestion_performance/latency_test.py \
 
 1. **Milvus GPU Search Dominates**: The GPU_CAGRA index search takes 96.2% of total latency (0.305s), which is expected for a 10M vector collection.
 
-2. **Embedding Generation is Fast**: Text-to-embedding conversion via Cosmos-embed NIM is only 0.007s (2.2%), showing excellent NIM performance.
+2. **Embedding Generation Was Fast in the Legacy Run**: Re-measure text embedding latency with CE1 OSS before drawing a current performance conclusion.
 
 3. **Low API Overhead**: The visual search API adds minimal overhead (0.004s or 1.3%).
 
@@ -659,4 +677,3 @@ The L40's 48GB VRAM can accommodate approximately:
 *Last Updated: October 24, 2025*  
 *Benchmark Version: 1.0*  
 *Configuration: milvus_l40_standalone_optimized.yaml*
-

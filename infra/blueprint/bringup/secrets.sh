@@ -1,13 +1,18 @@
 #!/bin/bash
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 # Ensure NGC_API_KEY is set
 if [ -z "$NGC_API_KEY" ]; then
@@ -27,20 +32,25 @@ if [ -z "$DOCKER_USER" ] ; then
   exit 1
 fi
 
-# Compute the nvcr auth value
-NVCR_AUTH=$(echo -n "\$oauthtoken:$NGC_API_KEY" | base64 -w 0)
+# CI-hosted CDS images use NVCV_NGC_KEY; other deployments retain NGC_API_KEY.
+NVCR_PULL_KEY="${NVCV_NGC_KEY:-$NGC_API_KEY}"
+NVCR_AUTH=$(echo -n "\$oauthtoken:$NVCR_PULL_KEY" | base64 -w 0)
 
 # Compute the docker auth value
 DOCKER_AUTH=$(echo -n "$DOCKER_USER:$DOCKER_PAT" | base64 -w 0)
 
-# Create the dockerconfig.json file
-cat <<EOF > dockerconfig.json
+# Keep pull credentials outside the checkout and CI artifacts.
+umask 077
+export REGISTRY_CONFIG_PATH
+REGISTRY_CONFIG_PATH=$(mktemp)
+trap 'rm -f -- "$REGISTRY_CONFIG_PATH"' EXIT
+cat <<EOF > "$REGISTRY_CONFIG_PATH"
 {
   "auths": {
     "nvcr.io": {
       "auth": "$NVCR_AUTH",
-      "username": "oauthtoken",
-      "password": "$NGC_API_KEY",
+      "username": "\$oauthtoken",
+      "password": "$NVCR_PULL_KEY",
       "email": "user@example.com"
     },
     "https://index.docker.io/v1/": {
@@ -55,13 +65,13 @@ kubectl delete secret nvcr-io --ignore-not-found
 
 # Create the Kubernetes secret
 kubectl create secret generic nvcr-io \
-  --from-file=.dockerconfigjson=dockerconfig.json \
+  --from-file=".dockerconfigjson=$REGISTRY_CONFIG_PATH" \
   --type=kubernetes.io/dockerconfigjson
 
 kubectl patch serviceaccount default -p '{"imagePullSecrets": [{"name": "nvcr-io"}]}'
 
 # Clean up the temporary file
-rm dockerconfig.json
+rm -f -- "$REGISTRY_CONFIG_PATH"
 
 ### Create cosmos-embed specific secrets (using NGC_API_KEY)
 echo "Creating cosmos-embed secrets with NGC_API_KEY..."

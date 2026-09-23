@@ -289,8 +289,8 @@ cds collections get a87235cc0_7a76_493a_8610_72080629baeb
     "pipeline": "cosmos_video_search_milvus",
     "name": "My Video Collection",
     "tags": {
-      "storage-template": "s3://cds-test-vp-905418373856/msrvtt-videos/{{filename}}",
-      "storage-secrets": "cds-test-vp-905418373856-secrets-videos"
+      "storage-template": "s3://my-video-bucket/msrvtt-videos/{{filename}}",
+      "storage-secrets": "my-video-bucket-secrets-videos"
     },
     "init_params": null,
     "cameras": "camera_front_wide_120fov",
@@ -368,7 +368,7 @@ aws configure set aws_secret_access_key YOUR_SECRET --profile cds-s3-aws
 aws configure set region us-east-2 --profile cds-s3-aws
 
 # Ingest videos from S3
-cds ingest files s3://cds-test-vp-905418373856/msrvtt-videos/ \
+cds ingest files s3://my-video-bucket/msrvtt-videos/ \
   --collection-id d5aa2e3d_7421_4f42_911d_1a681c43d760 \
   --extensions mp4 \
   --s3-profile cds-s3-aws \
@@ -426,7 +426,7 @@ aws s3 cp s3://your-source-bucket/embeddings.parquet s3://my-milvus-bucket/embed
 
 # Then ingest (without metadata columns)
 cds ingest embeddings \
-  --parquet-dataset s3://cds-test-vp-905418373856/milvus_embeddings.parquet \
+  --parquet-dataset s3://my-video-bucket/milvus_embeddings.parquet \
   --collection-id a68495826_0c1d_4de4_8cdd_9e309d876ad7 \
   --id-cols id \
   --embeddings-col embedding \
@@ -506,7 +506,7 @@ cds search \
         "filename": "video7020.mp4",
         "source_id": "04bccb4352ab07cb7a1589c1e578fd464d36b53aff84ffed2868f6ce5ba8a5eb",
         "indexed_at": "2025-10-18T02:23:51.088094",
-        "source_url": "https://s3.us-east-2.amazonaws.com/cds-test-vp-905418373856/msrvtt-videos/video7020.mp4?..."
+        "source_url": "https://s3.us-east-2.amazonaws.com/my-video-bucket/msrvtt-videos/video7020.mp4?..."
       },
       "collection_id": "d5aa2e3d_7421_4f42_911d_1a681c43d760",
       "asset_url": null,
@@ -592,6 +592,8 @@ cds search \
 
 **Note**: The secrets API endpoint is not implemented in this version. Use Kubernetes secrets directly for S3 credentials instead.
 
+For Kubernetes deployments, add each storage Secret name to `secretAccess.allowedNames` in the visual-search Helm values and apply the values before using it. The application can only `get` explicitly allowed names; an empty list grants no Secret API access. Creating a Secret with `kubectl` does not add it to this allowlist. See [storage Secret access](aws-eks-deployment.md#storage-secret-access).
+
 ### Create Kubernetes Secret for S3 Access
 
 For collections that need S3 access, create a Kubernetes secret:
@@ -631,7 +633,7 @@ tags:
 For ingesting large numbers of videos, increase workers for parallel processing:
 
 ```bash
-cds ingest files s3://cds-test-vp-905418373856/msrvtt-videos/ \
+cds ingest files s3://my-video-bucket/msrvtt-videos/ \
   --collection-id a9fab0958_1079_412e_b7b8_d863fcecccae \
   --extensions mp4 \
   --num-workers 10 \
@@ -667,7 +669,7 @@ INFO:root:Loading profile default
 Log ingestion results to CSV for analysis:
 
 ```bash
-cds ingest files s3://cds-test-vp-905418373856/msrvtt-videos/ \
+cds ingest files s3://my-video-bucket/msrvtt-videos/ \
   --collection-id a9fab0958_1079_412e_b7b8_d863fcecccae \
   --extensions mp4 \
   --limit 10 \
@@ -684,9 +686,9 @@ cds ingest files s3://cds-test-vp-905418373856/msrvtt-videos/ \
 **CSV file contents**:
 ```csv
 file,status
-s3://cds-test-vp-905418373856/msrvtt-videos/video7020.mp4,200
-s3://cds-test-vp-905418373856/msrvtt-videos/video7024.mp4,200
-s3://cds-test-vp-905418373856/msrvtt-videos/video7021.mp4,200
+s3://my-video-bucket/msrvtt-videos/video7020.mp4,200
+s3://my-video-bucket/msrvtt-videos/video7024.mp4,200
+s3://my-video-bucket/msrvtt-videos/video7021.mp4,200
 ...
 ```
 
@@ -767,8 +769,6 @@ cds ingest files --help
 ## Related Documentation
 
 - [User Guide Overview](user-guide.md) - Main user guide
-- [UI User Guide](ui-user-guide.md) - Web interface guide
 - [API Reference](api_reference.md) - REST API documentation
 - [Docker Compose Troubleshooting](troubleshooting-docker-compose.md)
 - [Kubernetes Troubleshooting](troubleshooting-kubernetes.md)
-

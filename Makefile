@@ -1,12 +1,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 # Makefile for Cosmos Video Dataset Search
 
@@ -17,7 +22,8 @@ PYTHON := python3.10
 UV := uv
 DOCKER_BUILDKIT := 1
 IMAGE_TAG ?= latest
-REGISTRY ?= nvcr.io/nvidian
+PYTHON_BASE_IMAGE ?= python-base:latest
+REGISTRY ?= nvcr.io/nvidia/blueprint
 DATA_DIR ?= $(HOME)/data
 K400_JSON := $(DATA_DIR)/kinetics400_test.jsonl
 LIMIT ?=
@@ -26,7 +32,7 @@ RED := \033[0;31m
 GREEN := \033[0;32m
 YELLOW := \033[0;33m
 BLUE := \033[0;34m
-NC := \033[0m 
+NC := \033[0m
 
 help:
 	@echo "$(BLUE)Cosmos Video Dataset Search - Build System$(NC)"
@@ -37,7 +43,7 @@ help:
 # Environment Setup
 # ==============================================================================
 
-install: 
+install:
 	@echo "$(GREEN)Installing dependencies...$(NC)"
 	$(MAKE) install-python
 	@echo "$(BLUE)Installing CDS client CLI...$(NC)"
@@ -53,7 +59,7 @@ install-benchmark: install-python ## Install benchmarking/accuracy dependencies
 	@echo "$(BLUE)Installing benchmark extras (datasets, pandas …)…$(NC)"
 	UV_GIT_LFS=1 $(UV) sync --extra benchmark --index-strategy unsafe-best-match
 
-install-python: 
+install-python:
 	@echo "$(BLUE)Installing Python dependencies...$(NC)"
 	$(UV) venv .venv --python $(PYTHON)
 	@echo "$(BLUE)Installing all dependencies from pyproject.toml...$(NC)"
@@ -98,22 +104,31 @@ install-cds-cli: ## Install CDS client CLI as 'cds' command - Run make install-p
 	@echo "$(YELLOW)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 
 # ==============================================================================
-# Docker 
+# Docker
 # ==============================================================================
 
-build-docker:
+download-ce1-model: ## Download the pinned CE1 OSS model snapshot for Compose
+	@bash deploy/standalone/scripts/download_ce1_model.sh
+
+build-docker: download-ce1-model
+	$(MAKE) IMAGE_TAG=$(if $(filter file,$(origin IMAGE_TAG)),local,$(IMAGE_TAG)) \
+		build-python-base build-cosmos-embed-oss-pytorch \
+		build-visual-search
 	@echo "$(BLUE)Building all Docker images...$(NC)"
 	@echo "$(YELLOW)Note: Dependencies will be installed in containers using frozen lock files$(NC)"
-	$(MAKE) build-python-base
-	$(MAKE) build-visual-search
+	@echo "$(GREEN)Docker images built successfully.$(NC)"
 
 build-python-base:
 	@echo "$(BLUE)Building Python base image...$(NC)"
-	DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker build -f docker/base/python-base.Dockerfile -t python-base:latest .
+	DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker build -f docker/base/python-base.Dockerfile -t "$(PYTHON_BASE_IMAGE)" .
 
 build-visual-search: build-python-base
 	@echo "$(BLUE)Building visual search service image...$(NC)"
-	DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker build --build-arg IMAGE_TAG=$(IMAGE_TAG) -f docker/services/visual-search.Dockerfile -t visual-search:$(IMAGE_TAG) .
+	DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker build --build-arg IMAGE_TAG=$(IMAGE_TAG) --build-arg PYTHON_BASE_IMAGE="$(PYTHON_BASE_IMAGE)" -f docker/services/visual-search.Dockerfile -t visual-search:$(IMAGE_TAG) .
+
+build-cosmos-embed-oss-pytorch: build-python-base ## Build PyTorch-capable CE1 OSS service image
+	@echo "$(BLUE)Building Cosmos-Embed OSS PyTorch service image...$(NC)"
+	DOCKER_BUILDKIT=$(DOCKER_BUILDKIT) docker build --build-arg PYTHON_BASE_IMAGE="$(PYTHON_BASE_IMAGE)" -f docker/services/cosmos-embed-oss-pytorch.Dockerfile -t cvds-cosmos-embed-oss-pytorch:$(IMAGE_TAG) .
 
 build-host-setup:
 	@echo "$(BLUE)Building host setup container...$(NC)"
@@ -121,7 +136,7 @@ build-host-setup:
 
 
 # ==============================================================================
-# Local Unit Testing 
+# Local Unit Testing
 # ==============================================================================
 
 test-unit-local: check-install
@@ -132,6 +147,8 @@ test-unit-local: check-install
 
 test-visual-search-local: check-install
 	@echo "$(BLUE)Running visual search unit tests...$(NC)"
+	. .venv/bin/activate && pytest src/visual_search/common/tests/ -v
+	. .venv/bin/activate && pytest src/visual_search/tests/test_app_instrumentation.py -v
 	. .venv/bin/activate && pytest src/visual_search/tests/test_bulk_indexing.py -v
 	. .venv/bin/activate && pytest src/visual_search/tests/test_curator_parquet_converter.py -v
 	. .venv/bin/activate && pytest src/visual_search/tests/test_pipelines.py -v
@@ -155,16 +172,21 @@ test-haystack-local: check-install
 	. .venv/bin/activate && pytest src/haystack/tests/test_cosmos_integration.py -v
 	. .venv/bin/activate && pytest src/haystack/tests/test_cosmos_video_embedder.py -v
 
+test-cosmos-embed-oss-local: check-install
+	@echo "$(BLUE)Running CE1 OSS service tests...$(NC)"
+	. .venv/bin/activate && pytest src/cosmos_embed_oss/tests/ -v
+
 test-models-local: check-install
 	@echo "$(BLUE)Running model unit tests...$(NC)"
 	. .venv/bin/activate && pytest src/models/linear_classifier/tests/model_test.py -v
 
 test-all-unit-local: check-install
 	@echo "$(BLUE)Running all unit tests...$(NC)"
+	. .venv/bin/activate && pytest src/visual_search/common/tests/ -v
+	. .venv/bin/activate && pytest src/cosmos_embed_oss/tests/ -v
 	. .venv/bin/activate && pytest src/visual_search/tests/ -v
 	. .venv/bin/activate && pytest src/haystack/tests/ -v
 	. .venv/bin/activate && pytest src/haystack/components/tests/ -v
-	. .venv/bin/activate && pytest src/haystack/components/image/tests/ -v
 	. .venv/bin/activate && pytest src/haystack/components/milvus/tests/ -v
 	. .venv/bin/activate && pytest src/models/linear_classifier/tests/ -v
 	. .venv/bin/activate && pytest src/visual_search/v1/apis/utils/test_milvus_utils.py -v
@@ -203,14 +225,12 @@ test-integration-up: check-install ## Start integration test environment
 	@echo "$(YELLOW)----------------------------------------$(NC)"
 	@echo ""
 	@echo "$(BLUE)Starting services...$(NC)"
-	cd deploy/standalone && docker compose -f docker-compose.build.yml up -d
+	cd deploy/standalone && docker compose -f docker-compose.build.yml up -d --remove-orphans
 	@echo ""
 	@echo "$(YELLOW)----------------------------------------$(NC)"
 	@echo "$(BLUE)Waiting for services to be ready...$(NC)"
 	@echo "$(YELLOW)This may take a few minutes for GPU services to initialize...$(NC)"
-	python scripts/wait_for_services.py
-	@echo ""
-	@echo "$(BLUE)Check the UI at http://localhost:8080/cosmos-dataset-search$(NC)"
+	python scripts/wait_for_services.py --services milvus cosmos-embed visual-search
 	@echo ""
 	@echo "$(YELLOW)----------------------------------------$(NC)"
 	@echo "$(BLUE)Services started...$(NC)"
@@ -244,9 +264,9 @@ test-integration-logs: ## Show logs from integration test services
 	@echo "$(BLUE)Showing integration test logs...$(NC)"
 	docker compose -f deploy/standalone/docker-compose.build.yml logs -f
 
-test-visual-search: ## Run visual search
+test-visual-search: check-install ## Run visual search
 	@echo "$(BLUE)Running visual search...$(NC)"
-	cd deploy/services && ./launch_visual_service.sh
+	. .venv/bin/activate && visual-search
 
 test-integration-clean: ## Clean up integration test environment completely
 	@echo "$(BLUE)Cleaning up integration test environment...$(NC)"
@@ -282,11 +302,11 @@ ingest: check-install ## Ingest dataset into collection (use INGEST_FLAGS for op
 
 ingest-msrvtt: ## Ingest full MSRVTT dataset into collection
 	@echo "$(BLUE)Ingesting MSRVTT dataset into collection...$(NC)"
-	$(MAKE) ingest INGEST_FLAGS="--dataset friedrichor/MSR-VTT --collection-name 'MSR-VTT Collection'"
+	$(MAKE) ingest INGEST_FLAGS="--dataset friedrichor/MSR-VTT --collection-name 'MSR-VTT Collection' --s3-endpoint $(S3_ENDPOINT)"
 
 ingest-msrvtt-small: ## Ingest 100 MSRVTT videos into collection (for quick testing)
 	@echo "$(BLUE)Ingesting MSRVTT dataset (100 videos) into collection...$(NC)"
-	$(MAKE) ingest INGEST_FLAGS="--dataset friedrichor/MSR-VTT --collection-name 'MSR-VTT Small Collection' --limit 100"
+	$(MAKE) ingest INGEST_FLAGS="--dataset friedrichor/MSR-VTT --collection-name 'MSR-VTT Small Collection' --limit 100 --s3-endpoint $(S3_ENDPOINT)"
 
 # ==============================================================================
 # Accuracy / Benchmarking
@@ -295,6 +315,7 @@ ingest-msrvtt-small: ## Ingest 100 MSRVTT videos into collection (for quick test
 # make accuracy ACC_FLAGS="--dataset-file=/data/my.jsonl --video-dir=/data/videos --top-k=5"
 ACC_FLAGS ?=
 INGEST_FLAGS ?=
+S3_ENDPOINT ?= http://localhost:4566
 ACCURACY_FLAGS ?=
 
 accuracy: check-install
@@ -326,7 +347,7 @@ clean-volumes: ## Clean Docker volumes to fix metadata corruption issues
 	./scripts/integration-tools/clean-volumes.sh
 
 # ==============================================================================
-# Push Targets 
+# Push Targets
 # ==============================================================================
 # Usage: make push-visual-search IMAGE_TAG=debug-20250729
 push-visual-search: build-visual-search ## Push visual-search image to registry
@@ -338,42 +359,10 @@ push-visual-search: build-visual-search ## Push visual-search image to registry
 	@echo "$(GREEN)Successfully pushed visual-search image!$(NC)"
 
 # ==============================================================================
-# Packaging and Distribution
-# ==============================================================================
-
-package-blueprint: ## Package full blueprint including client source (mimics CI packaging)
-	@echo "$(BLUE)Packaging CVDS blueprint with client source...$(NC)"
-	@rm -rf .package_output
-	@python3 utils/packaging/package_files.py \
-		--root-dir . \
-		--skipped-file utils/packaging/files_to_skip.txt \
-		--output-dir .package_output/cvds_blueprint \
-		--package-file utils/packaging/final-list.txt \
-		--keywords-file utils/packaging/keywords.txt
-	@echo "$(GREEN)Blueprint packaged to: .package_output/cvds_blueprint$(NC)"
-	@echo ""
-	@echo "$(YELLOW)Package includes:$(NC)"
-	@echo "  • Blueprint deployment scripts (infra/blueprint/)"
-	@echo "  • CDS client source (src/visual_search/client/)"
-	@echo "  • Haystack schema utils (src/haystack/components/milvus/)"
-	@echo "  • Python project config (pyproject.toml, uv.lock)"
-	@echo ""
-	@echo "$(YELLOW)To test the package:$(NC)"
-	@echo "  cd .package_output/cvds_blueprint"
-	@echo "  ./infra/blueprint/bringup/install_cds_cli.sh"
-
-package-helm-chart: ## Package Helm chart only (no client source)
-	@echo "$(BLUE)Packaging Helm chart structure only...$(NC)"
-	@cd infra/blueprint && helm package .
-	@mv infra/blueprint/cvds_blueprint*.tgz ./
-	@echo "$(GREEN)Helm chart packaged$(NC)"
-	@echo "$(YELLOW)Note: This does NOT include client source. Use 'make package-blueprint' for full package.$(NC)"
-
-# ==============================================================================
 # Cleanup
 # ==============================================================================
 
-clean: 
+clean:
 	@echo "$(BLUE)Cleaning build artifacts...$(NC)"
 	rm -rf .venv/
 	rm -rf build/
@@ -385,12 +374,12 @@ clean:
 	rm -rf bin/
 	rm -rf node_modules/
 
-clean-docker: 
+clean-docker:
 	@echo "$(BLUE)Cleaning Docker resources...$(NC)"
 	docker system prune -f
 	docker image prune -f
 
-clean-models: 
+clean-models:
 	@echo "$(BLUE)Cleaning model weights...$(NC)"
 	rm -rf models/*/
 
@@ -398,11 +387,11 @@ clean-models:
 # Utilities
 # ==============================================================================
 
-shell: 
+shell:
 	@echo "$(BLUE)Opening development shell...$(NC)"
 	. .venv/bin/activate && $(SHELL)
 
-check: 
+check:
 	@echo "$(BLUE)Running all checks...$(NC)"
 	$(MAKE) lint
 	$(MAKE) test-unit-local

@@ -1,12 +1,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 # Docker Compose for Cosmos Video Dataset Search - Local Build Version
 # This version builds images locally using Dockerfiles instead of pulling from NGC
@@ -23,11 +28,28 @@ services:
     volumes:
       - ./:/workspace
       - ${HOME}/.docker:/root/.docker:ro
+      - type: bind
+        source: ${DATA_DIR}
+        target: /validation/data
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${COSMOS_EMBED_MODEL_HOST_PATH:-${HOME}/.cache/cosmos-embed1}
+        target: /validation/cosmos-embed-model
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: volume
+        source: ce1-oss-hf-cache
+        target: /validation/huggingface
+        read_only: true
     entrypoint: ["/usr/local/bin/bash"]
     command: ["/workspace/scripts/validate_env.sh"]
     environment:
-      - NVIDIA_API_KEY=${NVIDIA_API_KEY}
-      - DATA_DIR=${DATA_DIR}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
+      - DATA_DIR=${DATA_DIR:-}
+      - DATA_DIR_VALIDATION_PATH=/validation/data
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
       - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-http://localstack:4566}
@@ -35,16 +57,29 @@ services:
       - GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
       - GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-600}
       - MAX_DOCS_PER_UPLOAD=${MAX_DOCS_PER_UPLOAD:-1000}
+      - COSMOS_EMBED_SERVICE_MODE=${COSMOS_EMBED_SERVICE_MODE:-oss}
       - COSMOS_EMBED_GPUS=${COSMOS_EMBED_GPUS:-1}
-      - NIM_TRITON_LOG_VERBOSE=${NIM_TRITON_LOG_VERBOSE:-0}
+      - COSMOS_EMBED_BACKEND=${COSMOS_EMBED_BACKEND:-pytorch}
+      - COSMOS_EMBED_MODEL_PATH=${COSMOS_EMBED_MODEL_PATH:-/models/cosmos-embed1}
+      - COSMOS_EMBED_WEIGHTS_DIR=${COSMOS_EMBED_WEIGHTS_DIR:-}
+      - COSMOS_EMBED_MODEL_VARIANT=${COSMOS_EMBED_MODEL_VARIANT:-224p}
+      - COSMOS_EMBED_ALLOW_HF_DOWNLOAD=${COSMOS_EMBED_ALLOW_HF_DOWNLOAD:-false}
+      - COSMOS_EMBED_HF_MODEL_ID=${COSMOS_EMBED_HF_MODEL_ID:-nvidia/Cosmos-Embed1-224p}
+      - COSMOS_EMBED_HF_REVISION=${COSMOS_EMBED_HF_REVISION:-787e0b996f5260a71ad474a283c90539a2e12986}
+      - COSMOS_EMBED_LOCAL_FILES_ONLY=${COSMOS_EMBED_LOCAL_FILES_ONLY:-true}
+      - COSMOS_EMBED_MAX_MEDIA_BYTES=${COSMOS_EMBED_MAX_MEDIA_BYTES:-100663296}
+      - COSMOS_EMBED_MODEL_HOST_PATH=${COSMOS_EMBED_MODEL_HOST_PATH:-${HOME}/.cache/cosmos-embed1}
+      - COSMOS_EMBED_MODEL_VALIDATION_PATH=/validation/cosmos-embed-model
+      - COSMOS_EMBED_HF_CACHE_VALIDATION_PATH=/validation/huggingface
+      - HF_HOME=${HF_HOME:-}
+      - HF_HUB_CACHE=${HF_HUB_CACHE:-}
+      - HUGGINGFACE_HUB_CACHE=${HUGGINGFACE_HUB_CACHE:-}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
       - MILVUS_CUDA_VISIBLE_DEVICES=${MILVUS_CUDA_VISIBLE_DEVICES:-0}
-      - COSMOS_EMBED_NIM_URI=${COSMOS_EMBED_NIM_URI:-http://cosmos-embed:8000}
-      - NIM_LOG_LEVEL=${NIM_LOG_LEVEL:-DEFAULT}
+      - COSMOS_EMBED_URI=${COSMOS_EMBED_URI:-http://cosmos-embed:8000}
       - VISUAL_SEARCH_LOG_LEVEL=${VISUAL_SEARCH_LOG_LEVEL:-DEBUG}
       - ALLOWED_PIPELINES=${ALLOWED_PIPELINES:-cosmos_video_search_milvus}
-      - CDS_API_URL=${CDS_API_URL:-http://localhost:8888/v1}
-      - CDS_CDN_URL=${CDS_CDN_URL:-http://localhost:4566/cosmos-test-bucket}
-      - CDS_UI_URL=${CDS_UI_URL:-http://localhost:8080/}
 
   # ================================================
   # Infrastructure Services
@@ -117,8 +152,32 @@ services:
     networks:
       - cvds
 
+  cosmos-embed-cache-init:
+    image: ${COSMOS_EMBED_IMAGE:-cvds-cosmos-embed-oss-pytorch:local}
+    user: root
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_READ_SEARCH
+    network_mode: none
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    command:
+      [
+        "chown",
+        "-R",
+        "appuser:appuser",
+        "/home/appuser/.cache/huggingface",
+      ]
+    volumes:
+      - type: volume
+        source: ce1-oss-hf-cache
+        target: /home/appuser/.cache/huggingface
+
   cosmos-embed:
-    image: ${COSMOS_EMBED_IMAGE:-nvcr.io/nim/nvidia/cosmos-embed1:1.0.0}
+    image: ${COSMOS_EMBED_IMAGE:-cvds-cosmos-embed-oss-pytorch:local}
     container_name: cosmos-embed
     runtime: nvidia
     # ── expose one GPU in dev; in CI you can stub with 0
@@ -131,26 +190,63 @@ services:
               capabilities: [gpu]
     shm_size: 16g
     tmpfs:
-      - /tmp/ram:size=2g,mode=1777
+      - /tmp/ram:rw,size=2g,uid=999,gid=999,mode=1770
     ports:
       - "9000:8000"
-      - "9001:8001"
-      - "9002:8002"
     volumes:
-      - ${HOME}/.cache/nim:/opt/nim/.cache
+      - type: bind
+        source: ${COSMOS_EMBED_MODEL_HOST_PATH:-${HOME}/.cache/cosmos-embed1}
+        target: /models/cosmos-embed1
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: volume
+        source: ce1-oss-hf-cache
+        target: /home/appuser/.cache/huggingface
     environment:
-      - NGC_API_KEY=${NVIDIA_API_KEY:?err}
-      - NIM_TRITON_LOG_VERBOSE=${NIM_TRITON_LOG_VERBOSE:-0}
-      - NIM_LOG_LEVEL=${NIM_LOG_LEVEL:-DEFAULT}
+      - NGC_API_KEY=${COSMOS_EMBED_NGC_API_KEY:-${NVIDIA_API_KEY:-}}
+      - COSMOS_EMBED_BACKEND=${COSMOS_EMBED_BACKEND:-pytorch}
+      - COSMOS_EMBED_GPU_FRAMES=${COSMOS_EMBED_GPU_FRAMES:-true}
+      - COSMOS_EMBED_GPU_VIDEO=${COSMOS_EMBED_GPU_VIDEO:-true}
+      - COSMOS_EMBED_MODEL_PATH=${COSMOS_EMBED_MODEL_PATH:-/models/cosmos-embed1}
+      - COSMOS_EMBED_WEIGHTS_DIR=${COSMOS_EMBED_WEIGHTS_DIR:-}
+      - COSMOS_EMBED_MODEL_VARIANT=${COSMOS_EMBED_MODEL_VARIANT:-224p}
+      - COSMOS_EMBED_PREPARATION_WORKERS=${COSMOS_EMBED_PREPARATION_WORKERS:-8}
+      - COSMOS_EMBED_SDPA=${COSMOS_EMBED_SDPA:-true}
+      - COSMOS_EMBED_TORCH_COMPILE=${COSMOS_EMBED_TORCH_COMPILE:-true}
+      - COSMOS_EMBED_ALLOW_HF_DOWNLOAD=${COSMOS_EMBED_ALLOW_HF_DOWNLOAD:-false}
+      - COSMOS_EMBED_HF_MODEL_ID=${COSMOS_EMBED_HF_MODEL_ID:-nvidia/Cosmos-Embed1-224p}
+      - COSMOS_EMBED_HF_REVISION=${COSMOS_EMBED_HF_REVISION:-787e0b996f5260a71ad474a283c90539a2e12986}
+      - COSMOS_EMBED_LOCAL_FILES_ONLY=${COSMOS_EMBED_LOCAL_FILES_ONLY:-true}
+      - COSMOS_EMBED_MAX_MEDIA_BYTES=${COSMOS_EMBED_MAX_MEDIA_BYTES:-100663296}
+      - COSMOS_EMBED_TMP_DIR=${COSMOS_EMBED_TMP_DIR:-/tmp/ram}
+      - COSMOS_EMBED_MEDIA_DOWNLOAD_TIMEOUT_SECONDS=${COSMOS_EMBED_MEDIA_DOWNLOAD_TIMEOUT_SECONDS:-300}
+      - COSMOS_EMBED_PRESIGNED_URL_ENDPOINT_URL=${COSMOS_EMBED_PRESIGNED_URL_ENDPOINT_URL:-http://localstack:4566}
+      - COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HOSTS=${COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HOSTS:-}
+      - COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HTTP_ORIGINS=${COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HTTP_ORIGINS:-}
+      - COSMOS_EMBED_SERVICE_VERSION=${COSMOS_EMBED_SERVICE_VERSION:-1.2.0}
+      - HF_HOME=${HF_HOME:-/home/appuser/.cache/huggingface}
+      - HF_HUB_CACHE=${HF_HUB_CACHE:-}
+      - HUGGINGFACE_HUB_CACHE=${HUGGINGFACE_HUB_CACHE:-}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/v1/health/ready || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/health/ready', timeout=5).read()\" || exit 1",
+        ]
       interval: 30s
       timeout: 10s
       retries: 6
     networks:
       - cvds
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       validate-env:
+        condition: service_completed_successfully
+      cosmos-embed-cache-init:
         condition: service_completed_successfully
 
   # ================================================
@@ -158,6 +254,7 @@ services:
   # ================================================
 
   visual-search:
+    image: ${VISUAL_SEARCH_IMAGE:-visual-search:local}
     build:
       context: ../..
       dockerfile: docker/services/visual-search.Dockerfile
@@ -169,8 +266,8 @@ services:
       MAX_DOCS_PER_UPLOAD: ${MAX_DOCS_PER_UPLOAD:-100}
       MILVUS_DOCUMENT_STORE_URI: ${MILVUS_DOCUMENT_STORE_URI:-http://milvus:19530}
       MILVUS_DB: ${MILVUS_DB:-}
-      COSMOS_EMBED_NIM_URI: ${COSMOS_EMBED_NIM_URI:-http://cosmos-embed:8000}
-      NVIDIA_API_KEY: ${NVIDIA_API_KEY}
+      COSMOS_EMBED_URI: ${COSMOS_EMBED_URI:-http://cosmos-embed:8000}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
       ALLOWED_PIPELINES: ${ALLOWED_PIPELINES:-cosmos_video_search_milvus}
       VISUAL_SEARCH_LOG_LEVEL: ${VISUAL_SEARCH_LOG_LEVEL:-DEBUG}
       # LocalStack S3 configuration for bulk indexing
@@ -178,6 +275,11 @@ services:
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
       AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-http://localstack:4566}
+      # Outbound text/Parquet import policy, configured by the operator only.
+      CDS_FETCH_ALLOWED_ORIGINS: ${CDS_FETCH_ALLOWED_ORIGINS:-}
+      CDS_FETCH_PRIVATE_ORIGINS: ${CDS_FETCH_PRIVATE_ORIGINS:-http://localstack:4566}
+      CDS_FETCH_S3_ENDPOINTS: ${CDS_FETCH_S3_ENDPOINTS:-http://localstack:4566}
+      CDS_FETCH_MAX_TEXT_BYTES: ${CDS_FETCH_MAX_TEXT_BYTES:-16777216}
       # Map localhost:4566 to localstack:4566 for Docker networking
       LOCALSTACK_HOSTNAME: localstack
     ports:
@@ -191,26 +293,6 @@ services:
         condition: service_healthy
       cosmos-embed:
         condition: service_healthy
-    networks:
-      - cvds
-
-  # ================================================
-  # User Interface (Built locally)
-  # ================================================
-
-  visual-search-react-ui:
-    image: ${COSMOS_VDS_WEB_UI_IMAGE:-nvcr.io/nvidia/blueprint/cosmos-cds-ui:1.0.0}
-    container_name: cosmos-vds-web-ui
-    environment:
-      CDS_API_URL: ${CDS_API_URL:-http://localhost:8888/v1}
-      CDS_CDN_URL: ${CDS_CDN_URL:-http://localhost:4566/cosmos-test-bucket}
-      CDS_UI_URL: ${CDS_UI_URL:-http://localhost:8080/}
-      PORT: 8080
-    ports:
-      - "8080:8080"
-    depends_on:
-      visual-search:
-        condition: service_started
     networks:
       - cvds
 
@@ -229,7 +311,6 @@ services:
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_ENDPOINT_URL=http://localstack:4566
-      - EXTRA_CORS_ALLOWED_ORIGINS=http://localhost:8080
       - EXTRA_CORS_ALLOWED_HEADERS=content-type,x-amz-date,authorization,x-api-key,x-amz-security-token,x-amz-user-agent
       - BUCKET_NAME=cosmos-test-bucket
     healthcheck:
@@ -248,6 +329,7 @@ services:
 volumes:
   milvus_data:
   etcd_data:
+  ce1-oss-hf-cache:
 
 # ================================================
 # Networks

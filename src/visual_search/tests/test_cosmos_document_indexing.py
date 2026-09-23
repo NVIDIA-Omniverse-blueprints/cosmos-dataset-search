@@ -1,15 +1,21 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 """Tests for document indexing API changes supporting cosmos-embed base64 strategy."""
 
+import asyncio
 import base64
 from typing import List
 from unittest.mock import MagicMock, patch
@@ -17,9 +23,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
+
 from haystack import Document
 from haystack.dataclasses import ByteStream
-
+from src.haystack.components.video.cosmos_video_embedder import CosmosEmbedInputError
 from src.visual_search.common.models import (
     Collection,
     DocumentUploadEmbedding,
@@ -33,6 +40,7 @@ from src.visual_search.v1.apis.document_indexing import (
     _download_url_data,
     _index_documents,
     _index_haystack_documents,
+    index_documents,
 )
 
 # --------------------------------------------------------------------------- #
@@ -178,6 +186,55 @@ def test_convert_video_json_creates_data_uri():
     assert result.id == "test_embedded_video"
 
 
+@pytest.mark.parametrize("prefix", ["data:video/mp4", "data:video_frames/png"])
+def test_convert_video_json_preserves_existing_data_uri(prefix):
+    """Existing CE1 video data URIs must not receive a second prefix."""
+
+    payload = ",".join(["dGVzdA=="] * 8)
+    content = f"{prefix};base64,{{{payload}}}"
+    doc_upload = DocumentUploadJson(
+        content=content,
+        mime_type=MimeType.MP4,
+        id="test_existing_data_uri",
+    )
+
+    result = _convert_to_haystack_document(doc_upload)
+
+    assert result.content == content
+
+
+def test_index_documents_preserves_cosmos_embed_input_error(
+    mock_collection,
+    mock_cosmos_pipeline,
+):
+    """A CE1 422 response must remain a client error at the documents API."""
+
+    error = CosmosEmbedInputError(
+        422,
+        "video_frames input must contain exactly 8 frames",
+    )
+    document = DocumentUploadJson(
+        content="data:video_frames/png;base64,{dGVzdA==}",
+        mime_type=MimeType.MP4,
+    )
+
+    with patch(
+        "src.visual_search.v1.apis.document_indexing._index_documents",
+        side_effect=error,
+    ):
+        with pytest.raises(HTTPException) as raised:
+            asyncio.run(
+                index_documents(
+                    [document],
+                    collection=mock_collection,
+                    pipeline=mock_cosmos_pipeline,
+                )
+            )
+
+    assert raised.value.status_code == 422
+    assert raised.value.detail == error.detail
+
+
 def test_convert_embedding_upload_preserves_embeddings():
     """Test that DocumentUploadEmbedding preserves pre-computed embeddings."""
 
@@ -207,18 +264,15 @@ def test_download_url_data_success():
     test_data = b"downloaded_data_content"
     url = "https://example.com/file.data"
 
-    with patch("requests.get") as mock_get:
-        # Mock successful response
-        mock_response = MagicMock()
-        mock_response.content = test_data
-        mock_response.raise_for_status.return_value = None
-        mock_get.return_value = mock_response
+    with patch(
+        "src.visual_search.v1.apis.document_indexing.download_text",
+        return_value=test_data,
+    ) as mock_get:
 
         result = _download_url_data(url)
 
         # Verify request was made correctly
-        mock_get.assert_called_once_with(url, timeout=30)
-        mock_response.raise_for_status.assert_called_once()
+        mock_get.assert_called_once_with(url)
 
         # Verify data returned
         assert result == test_data
@@ -229,12 +283,15 @@ def test_download_url_data_timeout_handling():
 
     url = "https://slow-server.com/large_video.mp4"
 
-    with patch("requests.get") as mock_get:
-        # Mock timeout exception
-        mock_get.side_effect = Exception("Request timeout")
+    from src.visual_search.common.remote_fetch import FetchError
 
-        with pytest.raises(Exception, match="Request timeout"):
+    with patch("src.visual_search.v1.apis.document_indexing.download_text") as mock_get:
+        mock_get.side_effect = FetchError("Request timeout")
+
+        with pytest.raises(HTTPException) as exc:
             _download_url_data(url)
+        assert exc.value.status_code == 502
+        assert exc.value.detail == "Unable to download text import"
 
 
 def test_download_url_data_http_error_handling():
@@ -242,16 +299,44 @@ def test_download_url_data_http_error_handling():
 
     url = "https://example.com/nonexistent.mp4"
 
-    with patch("requests.get") as mock_get:
-        # Mock HTTP error
-        mock_response = MagicMock()
-        mock_response.raise_for_status.side_effect = HTTPException(
-            status_code=404, detail="404 Not Found"
-        )
-        mock_get.return_value = mock_response
+    from src.visual_search.common.remote_fetch import FetchPolicyError
 
-        with pytest.raises(HTTPException, match="404 Not Found"):
+    with patch("src.visual_search.v1.apis.document_indexing.download_text") as mock_get:
+        mock_get.side_effect = FetchPolicyError(
+            "Import URL resolves to a forbidden address"
+        )
+
+        with pytest.raises(HTTPException) as exc:
             _download_url_data(url)
+        assert exc.value.status_code == 400
+
+
+def test_rejected_text_download_preserves_existing_document(
+    mock_collection, mock_cosmos_pipeline
+):
+    document = DocumentUploadUrl(
+        id="keep-me", url="https://127.0.0.1/private", mime_type=MimeType.TEXT
+    )
+    with (
+        patch(
+            "src.visual_search.v1.apis.document_indexing.get_pipeline_by_collection",
+            return_value=mock_cosmos_pipeline,
+        ),
+        patch(
+            "src.visual_search.v1.apis.document_indexing._download_url_data",
+            side_effect=HTTPException(400, "Forbidden import"),
+        ),
+        patch(
+            "src.visual_search.v1.apis.document_indexing.delete_existing_docs"
+        ) as delete,
+        patch(
+            "src.visual_search.v1.apis.document_indexing._index_haystack_documents"
+        ) as write,
+    ):
+        with pytest.raises(HTTPException):
+            _index_documents(mock_collection, mock_cosmos_pipeline, [document])
+    delete.assert_not_called()
+    write.assert_not_called()
 
 
 # --------------------------------------------------------------------------- #

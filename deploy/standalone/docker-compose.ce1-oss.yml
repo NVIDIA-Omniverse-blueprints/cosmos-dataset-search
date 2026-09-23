@@ -1,0 +1,75 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+services:
+  validate-env:
+    volumes:
+      - type: bind
+        source: ${COSMOS_EMBED_MODEL_HOST_PATH:-${HOME}/.cache/cosmos-embed1}
+        target: /validation/cosmos-embed-model
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: volume
+        source: ce1-oss-hf-cache
+        target: /validation/huggingface
+        read_only: true
+    environment:
+      - COSMOS_EMBED_SERVICE_MODE=oss
+      - COSMOS_EMBED_BACKEND=${COSMOS_EMBED_BACKEND:-pytorch}
+      - COSMOS_EMBED_MODEL_PATH=${COSMOS_EMBED_MODEL_PATH:-/models/cosmos-embed1}
+      - COSMOS_EMBED_MODEL_HOST_PATH=${COSMOS_EMBED_MODEL_HOST_PATH:-${HOME}/.cache/cosmos-embed1}
+      - COSMOS_EMBED_MODEL_VALIDATION_PATH=/validation/cosmos-embed-model
+      - COSMOS_EMBED_HF_CACHE_VALIDATION_PATH=/validation/huggingface
+
+  cosmos-embed:
+    image: ${COSMOS_EMBED_IMAGE:-cvds-cosmos-embed-oss-pytorch:local}
+    volumes:
+      - type: bind
+        source: ${COSMOS_EMBED_MODEL_HOST_PATH:-${HOME}/.cache/cosmos-embed1}
+        target: /models/cosmos-embed1
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: volume
+        source: ce1-oss-hf-cache
+        target: /home/appuser/.cache/huggingface
+    environment:
+      - COSMOS_EMBED_BACKEND=${COSMOS_EMBED_BACKEND:-pytorch}
+      - COSMOS_EMBED_GPU_FRAMES=${COSMOS_EMBED_GPU_FRAMES:-true}
+      - COSMOS_EMBED_GPU_VIDEO=${COSMOS_EMBED_GPU_VIDEO:-true}
+      - COSMOS_EMBED_MODEL_PATH=${COSMOS_EMBED_MODEL_PATH:-/models/cosmos-embed1}
+      - COSMOS_EMBED_WEIGHTS_DIR=${COSMOS_EMBED_WEIGHTS_DIR:-}
+      - COSMOS_EMBED_MODEL_VARIANT=${COSMOS_EMBED_MODEL_VARIANT:-224p}
+      - COSMOS_EMBED_PREPARATION_WORKERS=${COSMOS_EMBED_PREPARATION_WORKERS:-8}
+      - COSMOS_EMBED_SDPA=${COSMOS_EMBED_SDPA:-true}
+      - COSMOS_EMBED_TORCH_COMPILE=${COSMOS_EMBED_TORCH_COMPILE:-true}
+      - COSMOS_EMBED_ALLOW_HF_DOWNLOAD=${COSMOS_EMBED_ALLOW_HF_DOWNLOAD:-false}
+      - COSMOS_EMBED_HF_MODEL_ID=${COSMOS_EMBED_HF_MODEL_ID:-nvidia/Cosmos-Embed1-224p}
+      - COSMOS_EMBED_HF_REVISION=${COSMOS_EMBED_HF_REVISION:-787e0b996f5260a71ad474a283c90539a2e12986}
+      - COSMOS_EMBED_LOCAL_FILES_ONLY=${COSMOS_EMBED_LOCAL_FILES_ONLY:-true}
+      - COSMOS_EMBED_MAX_MEDIA_BYTES=${COSMOS_EMBED_MAX_MEDIA_BYTES:-100663296}
+      - COSMOS_EMBED_TMP_DIR=${COSMOS_EMBED_TMP_DIR:-/tmp/ram}
+      - COSMOS_EMBED_MEDIA_DOWNLOAD_TIMEOUT_SECONDS=${COSMOS_EMBED_MEDIA_DOWNLOAD_TIMEOUT_SECONDS:-300}
+      - COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HOSTS=${COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HOSTS:-}
+      - COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HTTP_ORIGINS=${COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HTTP_ORIGINS:-}
+      - COSMOS_EMBED_PRESIGNED_URL_ENDPOINT_URL=${COSMOS_EMBED_PRESIGNED_URL_ENDPOINT_URL:-http://localstack:4566}
+      - COSMOS_EMBED_SERVICE_VERSION=${COSMOS_EMBED_SERVICE_VERSION:-1.2.0}
+      - HF_HOME=${HF_HOME:-/home/appuser/.cache/huggingface}
+      - HF_TOKEN=${HF_TOKEN:-}
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+
+volumes:
+  ce1-oss-hf-cache:

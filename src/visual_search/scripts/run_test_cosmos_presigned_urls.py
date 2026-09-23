@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import argparse
 import json
@@ -23,10 +28,10 @@ import requests
 # ------------------------------------------------------------------
 # CONFIG – edit these three lines or override with CLI arguments
 # ------------------------------------------------------------------
-DEFAULT_NIM_URI   = "http://localhost:9000"
-DEFAULT_BUCKET    = "cosmos-test-bucket"
-S3_ENDPOINT       = "http://localhost:4566"  # LocalStack default
-AWS_REGION        = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+DEFAULT_COSMOS_EMBED_URI = "http://localhost:9000"
+DEFAULT_BUCKET = "cosmos-test-bucket"
+S3_ENDPOINT = "http://localhost:4566"  # LocalStack default
+AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 # ------------------------------------------------------------------
 
 
@@ -47,6 +52,7 @@ def upload_and_presign(
     # If user asked for a different host, rewrite the URL
     if url_host:
         from urllib.parse import urlparse, urlunparse
+
         parts = list(urlparse(url))
         # keep port if present
         if ":" in parts[1]:
@@ -67,21 +73,34 @@ def build_video_inputs(urls: List[str]) -> List[str]:
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(description="Cosmos-Embed bulk_video presigned-URL test")
-    p.add_argument("--nim-uri", default=DEFAULT_NIM_URI,
-                   help="Base URI of the Cosmos-Embed NIM (default: %(default)s)")
-    p.add_argument("--bucket", default=DEFAULT_BUCKET,
-                   help="S3 bucket to upload to (default: %(default)s)")
-    p.add_argument("--endpoint-url", default=S3_ENDPOINT,
-                   help="Custom S3 endpoint (LocalStack/MinIO). If unset,"
-                        " boto3 uses real AWS")
+    p = argparse.ArgumentParser(
+        description="Cosmos-Embed bulk_video presigned-URL test"
+    )
+    p.add_argument(
+        "--cosmos-embed-uri",
+        default=DEFAULT_COSMOS_EMBED_URI,
+        help="Base URI of the CE1 OSS service (default: %(default)s)",
+    )
+    p.add_argument(
+        "--bucket",
+        default=DEFAULT_BUCKET,
+        help="S3 bucket to upload to (default: %(default)s)",
+    )
+    p.add_argument(
+        "--endpoint-url",
+        default=S3_ENDPOINT,
+        help="Custom S3 endpoint (LocalStack/MinIO). If unset," " boto3 uses real AWS",
+    )
     # Optional: replace the hostname in the generated presigned URLs so
-    # they are reachable from inside the NIM container.
-    p.add_argument("--url-host",
-                   help="Override hostname part of presigned URLs "
-                        "(e.g. 'localstack' or 'host.docker.internal').")
-    p.add_argument("video_files", nargs="+",
-                   help="Local video files (.mp4, .mov …) to upload (≥2)")
+    # they are reachable from inside the CE1 OSS service container.
+    p.add_argument(
+        "--url-host",
+        help="Override hostname part of presigned URLs "
+        "(e.g. 'localstack' or 'host.docker.internal').",
+    )
+    p.add_argument(
+        "video_files", nargs="+", help="Local video files (.mp4, .mov …) to upload (≥2)"
+    )
     args = p.parse_args(argv)
 
     if len(args.video_files) < 2:
@@ -115,14 +134,14 @@ def main(argv=None):
     for v in video_inputs:
         print("  ", v[:120] + ("…" if len(v) > 120 else ""))
 
-    # ---------- CALL NIM ----------
+    # ---------- CALL CE1 OSS service ----------
     payload = {
         "input": video_inputs,
         "request_type": "bulk_video",
         "encoding_format": "float",
         "model": "nvidia/cosmos-embed1",
     }
-    url = f"{args.nim_uri.rstrip('/')}/v1/embeddings"
+    url = f"{args.cosmos_embed_uri.rstrip('/')}/v1/embeddings"
     print(f"\nPOST {url}")
     resp = requests.post(url, json=payload, timeout=600)
     print("Status:", resp.status_code)

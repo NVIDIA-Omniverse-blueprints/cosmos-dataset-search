@@ -1,13 +1,18 @@
 #!/bin/bash
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 ## Cosmos Dataset Search (CDS)
 
@@ -76,7 +81,7 @@ $KUBECTL_CMD create secret generic $SECRETS_NAME \
   --from-literal=aws_region=$CUSTOM_AWS_REGION
 
 ### Now we need to create a collection for the data.
-### The tag file tells the UI how to download images and videos.
+### The tag file tells clients how to locate images and videos.
 echo "{ \"tags\": {
   \"storage-template\": \"s3://$CUSTOM_S3_BUCKET_NAME/$CUSTOM_S3_FOLDER/{{filename}}\",
   \"storage-secrets\": \"$SECRETS_NAME\"
@@ -91,4 +96,3 @@ echo "This will take a while... By increasing the number of visual-search pods, 
 INGEST_CMD="cds ingest files s3://$CUSTOM_S3_BUCKET_NAME/$CUSTOM_S3_FOLDER --collection-id $COLLECTION_ID --s3-profile $PROFILE_NAME --extensions mp4 --num-workers 3 --limit 5"
 echo "$INGEST_CMD"
 eval "$INGEST_CMD"
-  

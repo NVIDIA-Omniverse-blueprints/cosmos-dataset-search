@@ -4,19 +4,42 @@ This guide provides complete step-by-step instructions for deploying CDS (Cosmos
 
 ## Overview
 
-This deployment uses a pre-configured Docker container that includes all necessary tools (AWS CLI, eksctl, kubectl, helm) to deploy CDS on AWS EKS. 
+This deployment uses a pre-configured Docker container that includes all necessary tools (AWS CLI, eksctl, kubectl, helm) to deploy CDS on AWS EKS.
+
+The release defaults use the following NGC images. See the [container guide](release-containers.md) for immutable digests and Compose usage.
+
+| Service | Image |
+| --- | --- |
+| CDS API | `nvcr.io/nvidia/blueprint/cosmos-dataset-search:1.2.0` |
+| CE1 OSS | `nvcr.io/nvidia/blueprint/cosmos-embed1-oss:1.2.0` |
+
+The EKS nodes must be able to pull both images. Set `NGC_API_KEY` to a key with access to these NGC containers before running the deployment scripts. The scripts configure the existing `nvcr-io` image pull Secret. GitHub package credentials are not required.
 
 **What gets deployed**:
 - EKS cluster with GPU and CPU node groups
 - S3 bucket for storage
 - Milvus vector database
-- Cosmos-embed NIM for video embeddings
+- CE1 OSS service for video embeddings
 - Visual search service
-- React-based web UI
 
 **Total time**: ~30-40 minutes
 
 ## Prerequisites
+
+### Storage Secret access
+
+Before deploying, set `secretAccess.allowedNames` in `infra/blueprint/bringup/values.yaml` to the Kubernetes Secret names used by your `storage_secrets` requests, for example:
+
+```yaml
+secretAccess:
+  allowedNames: [customer-s3-credentials]
+```
+
+The default empty list grants no Secret API access. The `s3-access-sa` Role permits only `get` on these names in `default`, never namespace-wide `list` or `watch`. Add new or renamed Secrets to this list and apply a Helm upgrade; otherwise requests needing them fail with a Kubernetes 403. Rotating values under an existing name does not require a Role change. IAM access and kubelet-injected `secretKeyRef` environment variables are unchanged. Review other RoleBindings separately: Kubernetes permissions are additive, so this chart cannot revoke grants from other Roles.
+
+CE1 also verifies its mounted model files against the checksum manifest shipped with the application before loading. See the model integrity notes in the [Compose guide](docker-compose-deployment.md#step-5-download-ce1-oss-model-weights); the same check applies to PVC snapshots.
+
+Before exposing this deployment, configure customer-managed authentication, authorization, trusted TLS and allowed browser origins at your gateway. The quickstart does not set a production-specific CORS policy. For private storage, see [ingestion source settings](import-url-security.md).
 
 ### AWS Account Requirements
 
@@ -115,7 +138,7 @@ echo "Region: $AWS_REGION"
 
 > **"Environment variables are the backbone of your deployment. Set them carefully, and your journey will be smooth."**
 
-**Important Note:**  
+**Important Note:**
 To properly source the `my-env.sh` file and ensure all environment variables are exported, **always** use the following syntax:
 
 ```bash
@@ -214,20 +237,34 @@ Should show IAM role ARN annotation.
 
 ### Step 6: Deploy Kubernetes Services
 
-Deploy all CDS services:
+Provision the pinned CE1 model PVC before starting the service. Run this from your host; the variables are passed explicitly to this container command:
 
 ```bash
-docker exec cds-deployment bash -c "cd /workspace/blueprint/bringup && ./k8s_up.sh -y"
+docker exec \
+  -e COSMOS_EMBED_OSS_MODEL_PVC=ce1-oss-model \
+  -e COSMOS_EMBED_OSS_MODEL_HF_REVISION=787e0b996f5260a71ad474a283c90539a2e12986 \
+  -e COSMOS_EMBED_OSS_IMAGE_REPOSITORY=nvcr.io/nvidia/blueprint/cosmos-embed1-oss \
+  -e COSMOS_EMBED_OSS_IMAGE_TAG=1.2.0 \
+  cds-deployment bash -c \
+  'cd /workspace/blueprint/bringup && ./seed_ce1_oss_model.sh && ./k8s_up.sh -y'
+```
+
+The seed step requires outbound access to Hugging Face and an `HF_TOKEN` if the model requires authentication. For offline installations, provision the same checksum-verified snapshot into the PVC using your own storage process. The CE1 service mounts the snapshot read-only and does not download model weights at runtime by default.
+
+For later deployments after the PVC is seeded, pass its name again. Exports in an earlier `docker exec` shell do not persist into a new one:
+
+```bash
+docker exec -e COSMOS_EMBED_OSS_MODEL_PVC=ce1-oss-model \
+  cds-deployment bash -c "cd /workspace/blueprint/bringup && ./k8s_up.sh -y"
 ```
 
 **Duration**: 30-40 minutes total
 
 **What gets deployed**:
 - Kubernetes secrets for image pulling
-- Cosmos-embed NIM (GPU-accelerated embedding service)
+- CE1 OSS service (GPU-accelerated embedding service)
 - Milvus vector database (15 pods)
 - Visual Search API service
-- React web UI
 - Nginx ingress controller with TLS
 
 **Monitor progress** (in another terminal):
@@ -237,13 +274,13 @@ docker exec cds-deployment bash -c "cd /workspace/blueprint/bringup && ./k8s_up.
 docker exec cds-deployment bash -c "kubectl get pods -w"
 
 # Check specific service
-docker exec cds-deployment bash -c "kubectl get pods -l app.kubernetes.io/name=nvidia-nim-cosmos-embed"
+docker exec cds-deployment bash -c "kubectl get pods -l app.kubernetes.io/name=cosmos-embed"
 ```
 
 **Key stages**:
 1. Milvus components start (~5 min)
-2. Visual Search and UI start (~2-3 min)
-3. Cosmos-embed downloads model (~10-15 min) - this is the longest part
+2. Visual Search starts (~2-3 min)
+3. CE1 validates and loads the pre-provisioned model snapshot on the GPU
 4. Ingress controller creates AWS load balancer (~2-3 min)
 
 **Verify all pods are ready**:
@@ -256,9 +293,9 @@ All pods should show "Running" with "1/1" or "2/2" ready.
 
 **Common issues**:
 
-- **Cosmos-embed ContainerCreating for >5 minutes**: Normal - downloading large model
+- **Cosmos-embed ContainerCreating for >5 minutes**: Check image pulling, PVC binding and GPU scheduling before inspecting model-load logs
 - **Milvus-querynode pod pending**: Check if scheduled on r7i.4xlarge node
-- **Image pull errors**: Verify NGC_API_KEY in environment
+- **Image pull errors**: Verify that both NGC `1.2.0` tags are published and that the key in the `nvcr-io` image pull Secret can access them.
 
 ### Step 7: Get Deployment URLs
 
@@ -269,7 +306,6 @@ docker exec cds-deployment bash -c "kubectl get ingress simple-ingress -o jsonpa
 ```
 
 **Access your deployment**:
-- Web UI: `https://<hostname>/cosmos-dataset-search`
 - API: `https://<hostname>/api`
 
 **Test the API**:
@@ -278,7 +314,7 @@ docker exec cds-deployment bash -c "kubectl get ingress simple-ingress -o jsonpa
 HOSTNAME=$(docker exec cds-deployment bash -c "kubectl get ingress simple-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'")
 
 # Test health endpoint
-curl -k https://$HOSTNAME/api/v1/health
+curl -k https://$HOSTNAME/api/health
 
 # Test pipelines endpoint
 curl -k https://$HOSTNAME/api/v1/pipelines
@@ -309,7 +345,7 @@ bash client_up.sh -y
 ```
 Installing CDS CLI from source...
 CDS CLI installed successfully!
-CDS CLI version 0.6.0
+CDS CLI version 1.2.0
 Configuring CDS CLI...
 Pipelines:
 {
@@ -369,7 +405,7 @@ source .venv/bin/activate
 
 ### Step 1: Prepare Dataset
 
-Download and prepare the MSR-VTT dataset using the provided configuration. Using the sample config in scripts has **max_records** of 100. So 100 videos will be downloaded. 
+Download and prepare the MSR-VTT dataset using the provided configuration. Using the sample config in scripts has **max_records** of 100. So 100 videos will be downloaded.
 
 ```bash
 # Download and prepare videos
@@ -444,7 +480,7 @@ aws --version
 
 The following steps *require* that your `aws` CLI is available and on your PATH.
 
-**AWS CLI Credentials:**  
+**AWS CLI Credentials:**
 The profile you create below using `aws configure set ... --profile ...` works locally and does not touch your default AWS credentials. If you have not previously used the AWS CLI, you may need to run:
 
 ```bash
@@ -519,61 +555,11 @@ Status code 200: 5/5 100%
 Processed 5 files successfully
 ```
 
-### Step 4: Verify and Configure CORS
-
-Before ingesting videos or using the web UI, **you must verify and configure CORS (Cross-Origin Resource Sharing) on your S3 buckets**. Without a correct CORS policy, the web application will not be able to load video assets from your S3 bucket, resulting in browser errors.
-
-**Run the provided verification script:**
-
-```bash
-docker exec cds-deployment bash -c "cd /workspace/blueprint/bringup && ./verify_and_configure_cors.sh"
-```
-- To apply CORS automatically, add the `-y` or `--apply` flag:
-```bash
-docker exec cds-deployment bash -c "cd /workspace/blueprint/bringup && ./verify_and_configure_cors.sh -y"
-```
-
-This script will:
-- Check your IAM permissions for GetBucketCors and PutBucketCors
-- Verify the current CORS configuration on **all buckets relevant to your deployment**, including custom buckets if defined
-- Offer to configure CORS interactively if needed, or apply recommended defaults automatically with `-y`
-- Allow you to choose between a secure (allow only your ingress hostname) or permissive (`*`) CORS policy
-
-> By default, the deployment **does not** set a CORS policy on the S3 bucket. This is a security best practice so you can explicitly control access for your origins.
-
-**What the script does:**
-- Lists all buckets referenced by your deployment (main and custom)
-- Shows current CORS status for each
-- If CORS is missing or not suitable, prompts you to set one, or applies the recommended policy if you use `-y`
-- Explains your options and provides samples for secure and permissive CORS
-
-**Example browser error if CORS is missing**:
-```
-Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource...
-(Reason: CORS header 'Access-Control-Allow-Origin' missing)
-```
-
-**When should you run this?**
-- **After ingestion, if you forgot to configure CORS or if videos don't load**
-- **Anytime you see CORS errors in your browser while testing or using the Web UI**
-
-**Note:**  
-You can also configure CORS manually at any time. See the section [Manually Configure CORS for S3 Videos](#manually-configure-cors-for-s3-videos) below for full details and examples of manual configuration using the AWS CLI.
-
-> **Security tip:** Only allow the origins you expect (for example, restrict to the actual AWS load balancer URL you obtained from `kubectl get ingress`). Do **not** use `*` for production unless absolutely necessary.
-
-If your deployment uses a custom S3 bucket (via `CUSTOM_S3_BUCKET_NAME`), ensure you configure CORS for *all* buckets used by CDS (main and custom).
-
-For manual CORS configuration, see [Manually Configure CORS for S3 Videos](#manually-configure-cors-for-s3-videos).
-
-### Step 5: Verify Ingestion
+### Step 4: Verify Ingestion
 
 ```bash
 # List collections
 cds collections list
-
-# Access Web UI
-echo "https://$(docker exec cds-deployment bash -c 'kubectl get ingress simple-ingress -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"')/cosmos-dataset-search"
 ```
 
 ### Ingest Your Own Videos
@@ -606,6 +592,8 @@ To ingest your own videos:
 
 **Note**: The `ingest_custom_videos.sh` script creates a collection with proper S3 storage configuration, creates Kubernetes secrets for S3 access, and then ingests the videos. This is the recommended workflow for AWS EKS deployments.
 
+Before using that script, include its generated Secret name, `${CUSTOM_S3_BUCKET_NAME}-secrets-videos`, in `secretAccess.allowedNames` and apply the visual-search Helm values. Creating a Secret does not grant the application permission to read it.
+
 ## Advanced Options and Configurations
 
 ### Managing Secrets
@@ -623,11 +611,15 @@ docker exec cds-deployment kubectl create secret generic my-s3-creds \
 
 #### List Secrets
 
+This is an operator command using the deployment administrator's credentials. The CDS service account intentionally cannot list Secrets.
+
 ```bash
 docker exec cds-deployment kubectl get secrets
 ```
 
 #### Use Secret in Collection
+
+Add `my-s3-creds` to `secretAccess.allowedNames` and apply the visual-search Helm values first. Only the named `get` permission is needed; do not restore namespace-wide `list` or `watch` access.
 
 When creating a collection that references videos in S3, specify the secret in the collection configuration:
 
@@ -642,155 +634,6 @@ tags:
 ```
 
 For more details on using secrets with collections, see the [CLI User Guide](cli-user-guide.md#managing-secrets).
-
-### Manually Configure CORS for S3 Videos
-
-#### Why CORS is Required
-
-When your browser tries to load videos from S3, it makes cross-origin requests. S3 blocks these requests by default unless you explicitly configure CORS (Cross-Origin Resource Sharing) rules.
-
-**Error you'll see without CORS**:
-```
-Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource...
-(Reason: CORS header 'Access-Control-Allow-Origin' missing). Status code: 200.
-```
-
-#### Required IAM Permissions
-
-To configure CORS, your AWS credentials must have these permissions on the S3 bucket:
-
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "s3:PutBucketCORS",
-    "s3:GetBucketCORS"
-  ],
-  "Resource": "arn:aws:s3:::<your-bucket-name>"
-}
-```
-
-If you see an "AccessDenied" error, contact your AWS administrator to grant these permissions.
-
-#### Configure CORS for Main S3 Bucket
-
-Configure CORS for your main deployment bucket (`S3_BUCKET_NAME`):
-
-```bash
-# Source your environment variables
-set -a && source my-env.sh && set +a
-
-# Get your ingress hostname
-INGRESS_HOSTNAME=$(docker exec cds-deployment bash -c "kubectl get ingress simple-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'")
-
-echo "Configuring CORS for bucket: $S3_BUCKET_NAME"
-echo "Allowing origin: https://$INGRESS_HOSTNAME"
-
-# Apply CORS configuration with your specific ingress origin (RECOMMENDED for security)
-docker exec cds-deployment bash -c "aws s3api put-bucket-cors \
-  --bucket \$S3_BUCKET_NAME \
-  --region \$AWS_REGION \
-  --cors-configuration '{
-    \"CORSRules\": [{
-      \"AllowedOrigins\": [\"https://$INGRESS_HOSTNAME\"],
-      \"AllowedMethods\": [\"GET\", \"HEAD\"],
-      \"AllowedHeaders\": [\"*\"],
-      \"ExposeHeaders\": [\"ETag\", \"Content-Length\", \"Content-Type\"],
-      \"MaxAgeSeconds\": 3600
-    }]
-  }'"
-
-# Verify CORS configuration
-docker exec cds-deployment bash -c "aws s3api get-bucket-cors --bucket \$S3_BUCKET_NAME --region \$AWS_REGION"
-```
-
-**Alternative: Wildcard CORS (less secure, allows any origin)**:
-
-```bash
-docker exec cds-deployment bash -c "aws s3api put-bucket-cors \
-  --bucket \$S3_BUCKET_NAME \
-  --region \$AWS_REGION \
-  --cors-configuration '{
-    \"CORSRules\": [{
-      \"AllowedOrigins\": [\"*\"],
-      \"AllowedMethods\": [\"GET\", \"HEAD\"],
-      \"AllowedHeaders\": [\"*\"],
-      \"ExposeHeaders\": [\"ETag\", \"Content-Length\", \"Content-Type\"],
-      \"MaxAgeSeconds\": 3600
-    }]
-  }'"
-```
-
-#### Configure CORS for Custom S3 Bucket
-
-If you're using a different S3 bucket for video storage (via `CUSTOM_S3_BUCKET_NAME`), you must also configure CORS for that bucket:
-
-```bash
-# Source environment variables
-set -a && source my-env.sh && set +a
-
-# Get your ingress hostname
-INGRESS_HOSTNAME=$(docker exec cds-deployment bash -c "kubectl get ingress simple-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'")
-
-# Configure AWS CLI with custom dataset bucket credentials
-export PROFILE_NAME="${CUSTOM_S3_BUCKET_NAME}-profile"
-aws configure set aws_access_key_id "${CUSTOM_AWS_ACCESS_KEY_ID}" --profile "${PROFILE_NAME}"
-aws configure set aws_secret_access_key "${CUSTOM_AWS_SECRET_ACCESS_KEY}" --profile "${PROFILE_NAME}"
-aws configure set region "${CUSTOM_AWS_REGION}" --profile "${PROFILE_NAME}"
-
-echo "Configuring CORS for custom bucket: $CUSTOM_S3_BUCKET_NAME"
-echo "Allowing origin: https://$INGRESS_HOSTNAME"
-
-# Apply CORS to custom bucket with specific origin (RECOMMENDED)
-aws s3api put-bucket-cors \
-  --bucket $CUSTOM_S3_BUCKET_NAME \
-  --region $CUSTOM_AWS_REGION \
-  --profile $PROFILE_NAME \
-  --cors-configuration "{
-    \"CORSRules\": [{
-      \"AllowedOrigins\": [\"https://${INGRESS_HOSTNAME}\"],
-      \"AllowedMethods\": [\"GET\", \"HEAD\"],
-      \"AllowedHeaders\": [\"*\"],
-      \"ExposeHeaders\": [\"ETag\", \"Content-Length\", \"Content-Type\"],
-      \"MaxAgeSeconds\": 3600
-    }]
-  }"
-
-# Verify
-aws s3api get-bucket-cors --bucket $CUSTOM_S3_BUCKET_NAME --region $CUSTOM_AWS_REGION --profile $PROFILE_NAME
-```
-
-**Alternative: Wildcard CORS for custom bucket (less secure)**:
-
-```bash
-aws s3api put-bucket-cors \
-  --bucket $CUSTOM_S3_BUCKET_NAME \
-  --region $CUSTOM_AWS_REGION \
-  --profile $PROFILE_NAME \
-  --cors-configuration '{
-    "CORSRules": [{
-      "AllowedOrigins": ["*"],
-      "AllowedMethods": ["GET", "HEAD"],
-      "AllowedHeaders": ["*"],
-      "ExposeHeaders": ["ETag", "Content-Length", "Content-Type"],
-      "MaxAgeSeconds": 3600
-    }]
-  }'
-```
-
-#### Test CORS Configuration
-
-After configuring CORS, test that videos load in the web UI:
-
-1. Open the web UI in your browser
-2. Perform a search
-3. Click "Use this with search" on a video result
-4. The video should load and play without errors
-
-If you still see CORS errors, verify:
-- CORS configuration is applied: `aws s3api get-bucket-cors --bucket <bucket-name> --region <region>`
-- Your ingress hostname matches the allowed origin in CORS rules
-- You've configured CORS on all buckets that store videos
 
 ## Monitoring and Debugging
 
@@ -807,7 +650,7 @@ docker exec cds-deployment bash -c "kubectl get pods"
 docker exec cds-deployment bash -c "kubectl logs deployment/visual-search --tail=100"
 
 # Cosmos-embed logs
-docker exec cds-deployment bash -c "kubectl logs deployment/cosmos-embed-nvidia-nim-cosmos-embed --tail=100"
+docker exec cds-deployment bash -c "kubectl logs deployment/cosmos-embed --tail=100"
 
 # Milvus query node logs
 docker exec cds-deployment bash -c "kubectl logs deployment/milvus-querynode --tail=100"
@@ -844,7 +687,7 @@ docker exec cds-deployment bash -c "kubectl describe pod <pod-name>"
 
 **If pod is pending**:
 ```bash
-docker exec cds-deployment bash -c "kubectl describe pod -l app.kubernetes.io/name=nvidia-nim-cosmos-embed"
+docker exec cds-deployment bash -c "kubectl describe pod -l app.kubernetes.io/name=cosmos-embed"
 ```
 
 Check for:
@@ -852,10 +695,10 @@ Check for:
 - GPU resources: One GPU per pod required
 - Proper scheduling: Should be on cvs-gpu labeled nodes
 
-**If container is creating for long time**:
-- This is normal - downloading large model (~20GB)
-- Can take 10-15 minutes on first download
-- Check logs: `kubectl logs -l app.kubernetes.io/name=nvidia-nim-cosmos-embed`
+**If the pod stays in `ContainerCreating`**:
+- Inspect pod events for image-pull, volume-mount or scheduling errors.
+- Confirm `ce1-oss-model` is Bound and the seed job completed successfully.
+- Model downloads occur in the seed step, not in the default CE1 runtime. Once the container starts, check its logs for snapshot verification or GPU initialization errors.
 
 ### Ingress Not Accessible
 
@@ -878,30 +721,8 @@ docker exec cds-deployment bash -c "kubectl get svc -n ingress-nginx"
 docker exec cds-deployment bash -c "kubectl get ingress simple-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'"
 
 # Test API (replace <hostname> with actual hostname)
-curl -k https://<hostname>/api/v1/health
+curl -k https://<hostname>/api/health
 ```
-
-### CORS Issues with S3 Videos
-
-**Problem**: Videos don't load in the web UI with CORS error in browser console:
-```
-Cross-Origin Request Blocked: The Same Origin Policy disallows reading the remote resource...
-(Reason: CORS header 'Access-Control-Allow-Origin' missing)
-```
-
-**Cause**: S3 bucket doesn't have CORS configuration to allow the web UI to access videos.
-
-**Quick Solution**: Run the CORS verification and configuration script:
-```bash
-docker exec cds-deployment bash -c "cd /workspace/blueprint/bringup && ./verify_and_configure_cors.sh" # add -y | --apply for applying CORS
-```
-
-This script will:
-- Check your IAM permissions
-- Verify current CORS configuration
-- Guide you through configuring CORS interactively
-
-**Manual Solution**: See the dedicated [Manually Configure CORS for S3 Videos](#manually-configure-cors-for-s3-videos) section for complete instructions on configuring CORS manually for both main and custom S3 buckets.
 
 ## Cleanup
 
@@ -950,8 +771,6 @@ docker exec cds-deployment bash -c "kubectl logs <pod-name> --tail=100"
 # Describe problematic pod
 docker exec cds-deployment bash -c "kubectl describe pod <pod-name>"
 
-# Verify and configure CORS (if videos don't load)
-docker exec cds-deployment bash -c "cd /workspace/blueprint/bringup && ./verify_and_configure_cors.sh" # add -y | --apply for applying CORS
 ```
 
 ### Deployment Checklist
@@ -968,14 +787,13 @@ docker exec cds-deployment bash -c "cd /workspace/blueprint/bringup && ./verify_
 - [ ] S3 bucket configured (`s3_up.sh -y`)
 - [ ] Kubernetes services deployed (`k8s_up.sh -y`)
 - [ ] All 17 pods in Running status
-- [ ] CORS verification (Run `./verify_and_configure_cors.sh`)
 - [ ] Deployment URLs obtained
 - [ ] CDS CLI installed on local machine
 - [ ] CLI configured and tested
 
 ## Summary
 
-**Total deployment time**: ~30-40 minutes  
+**Total deployment time**: ~30-40 minutes
 **Total pods deployed**: 17
 
 **Next steps**: Install CDS CLI locally, configure with your API endpoint, and start ingesting videos.

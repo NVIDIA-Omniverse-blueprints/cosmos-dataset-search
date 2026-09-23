@@ -1,12 +1,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 apiVersion: apps/v1
 kind: Deployment
@@ -44,6 +49,14 @@ spec:
         env:
         - name: MAX_DOCS_PER_UPLOAD
           value: {{ .Values.env.MAX_DOCS_PER_UPLOAD | quote }}
+        - name: CDS_FETCH_ALLOWED_ORIGINS
+          value: {{ .Values.env.CDS_FETCH_ALLOWED_ORIGINS | default "" | quote }}
+        - name: CDS_FETCH_PRIVATE_ORIGINS
+          value: {{ .Values.env.CDS_FETCH_PRIVATE_ORIGINS | default "" | quote }}
+        - name: CDS_FETCH_S3_ENDPOINTS
+          value: {{ .Values.env.CDS_FETCH_S3_ENDPOINTS | default "" | quote }}
+        - name: CDS_FETCH_MAX_TEXT_BYTES
+          value: {{ .Values.env.CDS_FETCH_MAX_TEXT_BYTES | default "16777216" | quote }}
         - name: GUNICORN_PORT
           value: {{ .Values.env.GUNICORN_PORT | quote }}
         - name: GUNICORN_TIMEOUT
@@ -63,7 +76,7 @@ spec:
             secretKeyRef:
               name: secret-encryption-key
               key: SECRETS_ENCRYPTION_KEY
-        - name: COSMOS_EMBED_NIM_URI
-          value: {{ .Values.cosmosEmbed.name }}.{{ .Values.global.namespace }}.svc.cluster.local:{{ index .Values.cosmosEmbed.ports 0 "port" }}
+        - name: COSMOS_EMBED_URI
+          value: http://{{ .Values.cosmosEmbed.name }}.{{ .Values.global.namespace }}.svc.cluster.local:{{ index .Values.cosmosEmbed.ports 0 "port" }}
       imagePullSecrets:
       - name: {{ .Values.imagePullSecret }}

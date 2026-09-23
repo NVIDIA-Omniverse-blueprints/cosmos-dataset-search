@@ -1,12 +1,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 # Copyright 2025, NVIDIA Corporation. All rights reserved.
 
@@ -14,10 +19,11 @@ import re
 from typing import Any, Dict, Optional
 
 # Third-Party Imports
-import fsspec
 import pyarrow as pa
 import pyarrow.parquet as pq
 from pymilvus import Collection, CollectionSchema, MilvusException, connections, utility
+
+from src.visual_search.common.s3_import import open_s3_import
 
 # Local Application Imports
 from src.visual_search.logger import logger
@@ -99,15 +105,15 @@ def build_storage_options(
     secret_key: Optional[str] = None,
     endpoint_url: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Builds the storage_options dictionary for fsspec and potentially Milvus."""
+    """Build credential options for the guarded S3 reader and Milvus."""
     storage_options: Dict[str, Any] = {}
     client_kwargs: Dict[str, Any] = {}
 
     if access_key and secret_key:
         storage_options["key"] = access_key
         storage_options["secret"] = secret_key
-        if endpoint_url:
-            client_kwargs["endpoint_url"] = str(endpoint_url)  # Ensure it's string
+    if endpoint_url:
+        client_kwargs["endpoint_url"] = str(endpoint_url)
 
     if client_kwargs:
         storage_options["client_kwargs"] = client_kwargs
@@ -123,14 +129,11 @@ async def validate_parquet_schema(
 ) -> None:
     """
     Validates the schema of a Parquet file against a Milvus collection schema.
-    Uses fsspec for file access with provided storage options.
+    Uses guarded S3 range reads with provided storage options.
     """
     storage_options = storage_options or {}
     logger.debug(
         f"Validating schema for file '{file_path}' against collection '{collection_name}'"
-    )
-    logger.debug(
-        f"Using storage options: { {k: '******' if k == 'secret' else v for k, v in storage_options.items()} }"
     )
 
     try:
@@ -143,9 +146,9 @@ async def validate_parquet_schema(
             f"Milvus collection '{collection_name}' fields: {collection_fields}"
         )
 
-        # 2. Get Parquet File Schema using fsspec
+        # 2. Get Parquet File Schema through the guarded S3 transport.
         try:
-            with fsspec.open(file_path, "rb", **storage_options) as f:
+            with open_s3_import(file_path, storage_options) as f:
                 parquet_schema = pq.read_schema(f)
             parquet_fields = set(parquet_schema.names)
             logger.debug(f"Parquet file '{file_path}' fields: {parquet_fields}")
@@ -193,7 +196,7 @@ async def validate_parquet_schema(
                 and vector_field_name in parquet_fields
             ):
                 # Read only the first row (1 record) for the embedding column
-                with fsspec.open(file_path, "rb", **storage_options) as f:
+                with open_s3_import(file_path, storage_options) as f:
                     pf = pq.ParquetFile(f)
                     first_batch = next(
                         pf.iter_batches(columns=[vector_field_name], batch_size=1)

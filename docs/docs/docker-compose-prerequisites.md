@@ -22,23 +22,23 @@ This guide covers the prerequisites for deploying CDS using Docker Compose. This
 
 ### GPU Requirements
 
-CDS requires an NVIDIA GPU for running the Cosmos-embed NIM service. Supported GPUs:
+CDS requires an NVIDIA GPU for running the CE1 OSS service. Supported GPUs:
 
 | GPU                                      | GPU Memory | Support Level |
 |------------------------------------------|------------|---------------|
 | H100                                     | 80GB       | Preferred     |
-| A100, L40s, L4, H20, L20                 | 24GB+      | Optimized     |
+| A100, L40s, L4, H20, L20                 | 24GB+      | Recommended   |
 | Other Ampere+ GPUs                       | 16GB+      | Functional    |
 
 **Support Level Definitions:**
-- **Preferred**: Best performance with full TensorRT-LLM optimization
-- **Optimized**: Full TensorRT-LLM optimization with excellent performance
-- **Functional**: Runs end-to-end with fallback paths; lower throughput expected
+- **Preferred**: Best tested capacity for the PyTorch backend
+- **Recommended**: Suitable for normal local development and evaluation
+- **Functional**: Runs end-to-end; lower throughput may be expected
 
-**Cosmos-embed NIM Requirements:**
+**CE1 OSS Service Requirements:**
 - GPU Memory: Minimum 16GB; 24GB+ recommended for optimal performance
 - CUDA: Compatible with CUDA 11.8+ runtime
-- See [Cosmos-embed NIM Prerequisites](https://docs.nvidia.com/nim/cosmos-embed1/latest/prerequisites.html) for detailed hardware requirements
+- Model files: Public `nvidia/Cosmos-Embed1-224p` snapshot downloaded to a local directory before startup
 
 ### Software Requirements
 
@@ -60,9 +60,9 @@ CDS has been tested on the following operating systems:
 | [UV](https://github.com/astral-sh/uv)                          | 0.8.17+     | Python dependency management     |
 | [NVIDIA Drivers](https://www.nvidia.com/download/index.aspx)   | 525+        | GPU driver (CUDA 11.8+ support)  |
 
-#### Required Licenses
+#### Required Access
 
-- **NVIDIA AI Enterprise (NVAIE) License** or **NIM Developer License** - Required to pull and deploy Cosmos-embed NIM. Contact your NVIDIA account team or visit [NVIDIA AI Enterprise](https://www.nvidia.com/en-us/data-center/products/ai-enterprise/) for license information.
+- NGC registry access for the other CVDS service images
 
 ## Pre-Installation Setup
 
@@ -152,16 +152,13 @@ git lfs version
 
 ## NGC Configuration
 
-Access to NGC (NVIDIA GPU Cloud) is required for pulling the Cosmos-embed NIM container and models.
+Access to NGC (NVIDIA GPU Cloud) is required for the remaining CVDS service images. The CE1 OSS image is built from this repository, and its model files are prepared separately.
 
 ### Create NGC Account and API Key
 
 1. Create an account at [NGC](https://ngc.nvidia.com/)
 2. Generate an [API Key](https://org.ngc.nvidia.com/setup/api-key)
-3. Ensure your NGC account has access to:
-   - `nvidia/cosmos-embed` model
-   - Container registry `nvcr.io`
-   - Valid NVAIE or NIM Developer license entitlement
+3. Ensure your NGC account can authenticate to the `nvcr.io` container registry.
 
 ### Authenticate Docker with NGC
 
@@ -173,15 +170,7 @@ Password: <your-NGC-API-key>
 
 ### Verify NGC Access
 
-Test your NGC authentication and license access by pulling the Cosmos-embed NIM container (optional):
-
-```bash
-# Optional: Test pulling the Cosmos-embed NIM image
-# Note: This image is large (~20GB) and will take time to download
-docker pull nvcr.io/nim/nvidia/cosmos-embed1:latest
-```
-
-If the pull succeeds, your NGC authentication and NVAIE/NIM Dev license are configured correctly. If you encounter authentication or permission errors, verify your NGC API key and license access with your NVIDIA account team.
+Run `docker login nvcr.io` and continue with `make build-docker`. Authentication or permission failures for other CVDS images should be resolved with your NVIDIA account team.
 
 ## Network Requirements
 
@@ -209,16 +198,15 @@ CDS requires the following ports to be available. Any port conflicts must be res
 | Port  | Service              | Purpose                    |
 |-------|----------------------|----------------------------|
 | 8888  | Visual Search API    | REST API endpoint          |
-| 9000  | Cosmos-embed NIM     | Embedding service          |
+| 9000  | CE1 OSS service      | Embedding service          |
 | 19530 | Milvus               | Vector database            |
 | 4566  | LocalStack           | S3-compatible storage      |
-| 8080  | React UI             | Web user interface         |
 
 **Check for port conflicts:**
 
 ```bash
 # Verify ports are available
-ss -tuln | grep -E ':(8888|9000|19530|4566|8080)'
+ss -tuln | grep -E ':(8888|9000|19530|4566)'
 ```
 
 If this command returns any results, those ports are already in use. You must either:
@@ -232,7 +220,7 @@ If no output is returned, all required ports are available.
 ### Disk Space
 
 - **Base installation**: ~50GB for Docker images and model cache
-- **Model cache**: ~20GB for Cosmos-embed NIM models (downloaded on first run)
+- **Local model directory**: ~20GB for CE1 OSS model files prepared before startup
 - **Data storage**: Varies based on dataset size
   - Video storage: Matches your dataset size
   - Embeddings: ~1.3KB per video frame/segment

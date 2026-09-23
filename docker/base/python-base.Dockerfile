@@ -1,12 +1,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 # 
 # Python Base Dockerfile
@@ -21,8 +26,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
-# Install system dependencies and security updates
-# Note: Explicitly upgrading libtiff5 to fix CVE-2025-9900 (write-what-where vulnerability)
+# Install system dependencies and apply available distribution updates to the
+# whole installed base, including security fixes beyond a single media library.
 RUN apt-get update && apt-get install -y \
     python3.10 \
     python3.10-venv \
@@ -34,12 +39,13 @@ RUN apt-get update && apt-get install -y \
     git-lfs \
     ffmpeg \
     libmagic1 \
-    && apt-get upgrade -y libtiff5 \
+    && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1
 
-RUN pip install uv
+# Pin the validated tool release, including its patched quinn-proto dependency.
+RUN pip install uv==0.12.13
 
 # Create user first
 RUN groupadd -r appuser && useradd -r -g appuser -m appuser
