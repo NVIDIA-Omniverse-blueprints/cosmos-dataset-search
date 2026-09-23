@@ -1,15 +1,18 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-import base64
-import io
 import json
 import os
 import time
@@ -17,27 +20,27 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from hashlib import sha256
 from http import HTTPStatus
-from typing import Any, Dict, Generator, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 from uuid import uuid4
 
-import fsspec
 import pandas as pd
 import pyarrow as pa
-import pyarrow.parquet as pq
-import requests
 from fastapi import APIRouter, Body, HTTPException
-from fastapi.responses import JSONResponse
+
 from haystack import Document as HaystackDocument
 from haystack import Pipeline as HaystackPipeline
 from haystack.dataclasses import ByteStream
-
 from src.haystack.components.milvus.document_store import MilvusDocumentStore
 from src.haystack.components.milvus.schema_utils import MetadataConfig
+from src.haystack.components.video.cosmos_video_embedder import CosmosEmbedInputError
+from src.visual_search.common.remote_fetch import (
+    FetchError,
+    FetchPolicyError,
+    download_text,
+)
 
-from ...common.apis.collections import GetCollection, GetCollectionModel, GetPipeline
+from ...common.apis.collections import GetCollectionModel, GetPipeline
 from ...common.models import (
-    BulkEmbeddingsIngestRequest,
-    BulkEmbeddingsIngestResponse,
     Collection,
     DeleteResponse,
     Document,
@@ -54,7 +57,6 @@ from ...common.pipelines import (
     EnabledPipeline,
     get_document_stores,
     get_pipeline_by_collection,
-    run_index_pipeline,
 )
 from ...logger import logger
 from .collections import create_safe_name
@@ -141,47 +143,34 @@ async def index_documents(
             detail=f"Maximum number of documents per request {max_docs}",
         )
 
-    return _index_documents(
-        collection=collection,
-        pipeline=pipeline,
-        documents=documents,
-        existence_check_mode=existence_check_mode,
-    )
-
-
-def _read_parquet_from_url(url: str) -> Generator[pd.DataFrame, None, None]:
-    with fsspec.open(url) as f:
-        parquet_file = pq.ParquetFile(f)
-        for row_group_index in range(parquet_file.num_row_groups):
-            logger.info(
-                f"Processing {f} [{row_group_index}/{parquet_file.num_row_groups}]"
-            )
-            table = parquet_file.read_row_group(row_group_index)
-            yield table.to_pandas()
+    try:
+        return _index_documents(
+            collection=collection,
+            pipeline=pipeline,
+            documents=documents,
+            existence_check_mode=existence_check_mode,
+        )
+    except CosmosEmbedInputError as error:
+        raise HTTPException(
+            status_code=error.status_code,
+            detail=error.detail,
+        ) from error
 
 
 def _download_url_data(url: str) -> bytes:
-    """Download bytes from url."""
-    response = requests.get(url, timeout=30)
+    """Fetch text through the same policy for every connection and redirect."""
     try:
-        response.raise_for_status()          
-    except HTTPException as e:                    
-        raise                                 
-    except Exception as e:                   
-        logger.exception(
-            "Downloading url %s raised exception: %s", url, e,  
-        )
-        raise HTTPException(
-            status_code=response.status_code,
-            detail=response.text,
-        )
-    return response.content
+        return download_text(url)
+    except FetchPolicyError as error:
+        raise HTTPException(400, str(error)) from error
+    except FetchError as error:
+        raise HTTPException(502, "Unable to download text import") from error
+
 
 def _convert_to_haystack_document(
     document: Union[DocumentUploadJson, DocumentUploadUrl, DocumentUploadEmbedding],
 ) -> HaystackDocument:
-    """Convert different document upload formats into Haystack document.
-    """
+    """Convert different document upload formats into Haystack document."""
 
     # augment document metadata
     id = str(uuid4()) if document.id is None else document.id
@@ -200,16 +189,23 @@ def _convert_to_haystack_document(
     if isinstance(document, DocumentUploadJson):
         if document.mime_type == MimeType.TEXT:
             content = document.content
+        elif document.content.startswith(("data:video/", "data:video_frames/")):
+            content = document.content
         else:
             # keep base64 as data URI for downstream embedder
-            ext = document.mime_type.value.split('/')[-1]
+            ext = document.mime_type.value.split("/")[-1]
             content = f"data:video/{ext};base64,{document.content}"
     elif isinstance(document, DocumentUploadEmbedding):
         embedding = document.embedding
         content = None
     elif isinstance(document, DocumentUploadUrl):
         if document.mime_type == MimeType.TEXT:
-            content = _download_url_data(document.url).decode("utf-8")
+            try:
+                content = _download_url_data(document.url).decode("utf-8")
+            except UnicodeDecodeError as error:
+                raise HTTPException(
+                    400, "Text import must contain UTF-8 text"
+                ) from error
         else:
             content = document.url
             metadata["source_url"] = document.url
@@ -246,6 +242,11 @@ def _index_documents(
     # Get index name from collection id
     index_name = create_safe_name(collection.id)
 
+    # Finish URL validation/downloads before replacing existing documents. A
+    # rejected URL (including a redirect) must not delete an existing document.
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(documents)))) as executor:
+        haystack_docs = list(executor.map(_convert_to_haystack_document, documents))
+
     # Delete existing documents in Haystack document stores if IDs specified
     # Note: there's a DuplicatePolicy defined in haystack, which is also a param for `write_documents`
     # so ideally we want to use that enum, and move this logic into the document store,
@@ -267,18 +268,19 @@ def _index_documents(
                 )
 
     # Track video processing metrics
-    video_docs_count = sum(1 for doc in documents 
-                          if isinstance(doc, DocumentUploadUrl) 
-                          and doc.mime_type.value.startswith("video/"))
-    
+    video_docs_count = sum(
+        1
+        for doc in documents
+        if isinstance(doc, DocumentUploadUrl)
+        and doc.mime_type.value.startswith("video/")
+    )
+
     if video_docs_count > 0:
-        logger.info(f"Downloading {video_docs_count} video documents for secure base64 encoding")
-    
+        logger.info(
+            f"Downloading {video_docs_count} video documents for secure base64 encoding"
+        )
+
     logger.info(f"Processing {len(documents)} documents with cosmos-embed pipeline")
-    
-    # Create haystack documents
-    with ThreadPoolExecutor(max_workers=min(8, len(documents))) as executor:
-        haystack_docs = list(executor.map(_convert_to_haystack_document, documents))
 
     # Index Haystack documents
     resp_docs = _index_haystack_documents(collection, pipeline, haystack_docs)
@@ -333,7 +335,11 @@ def delete_document(
                 # For Milvus, try direct deletion by document ID
                 try:
                     # Check if document exists by attempting to retrieve it directly
-                    filters_by_id = {"field": "id", "operator": "==", "value": document_id}
+                    filters_by_id = {
+                        "field": "id",
+                        "operator": "==",
+                        "value": document_id,
+                    }
                     retrieved_documents = document_store.filter_documents(
                         collection_name=index_name,
                         filters=filters_by_id,
@@ -344,8 +350,14 @@ def delete_document(
             else:
                 # For other document stores, try filtering by document ID
                 try:
-                    filters_by_id = {"field": "id", "operator": "==", "value": document_id}
-                    retrieved_documents = document_store.filter_documents(filters=filters_by_id)
+                    filters_by_id = {
+                        "field": "id",
+                        "operator": "==",
+                        "value": document_id,
+                    }
+                    retrieved_documents = document_store.filter_documents(
+                        filters=filters_by_id
+                    )
                 except Exception as e:
                     logger.debug(f"Could not find document by ID {document_id}: {e}")
                     retrieved_documents = []
@@ -465,7 +477,8 @@ def _index_haystack_documents(
 
     t1 = time.time()
 
-    from src.visual_search.common import pipelines as _pipelines 
+    from src.visual_search.common import pipelines as _pipelines
+
     _pipelines.run_index_pipeline(
         index_pipeline=index_pipeline,
         index_pipeline_inputs=index_pipeline_inputs,
@@ -479,7 +492,9 @@ def _index_haystack_documents(
     resp_docs = []
     for haystack_document in haystack_documents:
         mime_type = haystack_document.meta.pop("mime_type", "")
-        indexed_at = haystack_document.meta.pop("indexed_at", datetime.utcnow().isoformat())
+        indexed_at = haystack_document.meta.pop(
+            "indexed_at", datetime.utcnow().isoformat()
+        )
         resp_docs.append(
             Document(
                 id=haystack_document.id,

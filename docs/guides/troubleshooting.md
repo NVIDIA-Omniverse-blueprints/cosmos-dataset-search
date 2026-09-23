@@ -85,14 +85,14 @@ Here are some commonly occurring issues and ways to resolve them.
 
 7. **Problem**:
 
-   a. **Error signatures**: UI Error:
+   a. **Error signatures**: API error:
       "Failed to search in collection` <Collection ID>`. Error
       details: "Something went wrong with the request: \<ClientError:
       An error occurred (AccessDenied) when calling the
       AssumeRoleWithWebIdentity operation: Not authorized to perform
       sts:AssumeRoleWithWebIdentity\>".
 
-   b. **Cause**: The UI is not able to access the assets (e.g.
+   b. **Cause**: The service is not able to access the assets (e.g.
       images/videos from the S3 bucket). The AWS configure step for the S3
       bucket does not work properly with the installation scripts at
       the moment.
@@ -108,7 +108,7 @@ Here are some commonly occurring issues and ways to resolve them.
 
       4. Install the visual search service using `helm install visual-search visual-search --values=values.yaml`.
 
-      5. Refresh the UI, and it should display the assets.
+      5. Retry the API request and verify that it returns the assets.
 
 8. **Problem**:
 
@@ -128,22 +128,22 @@ Here are some commonly occurring issues and ways to resolve them.
 
    b. **Resolution**: The `vius` pip client requires `pip<=25`.
 
-## Cosmos Embed NIM Service Issues
+## CE1 OSS Service Issues
 
 10. **Problem**:
 
     a. **Error signatures**: 
-       - "Failed to download model from NGC"
-       - "NGC authentication failed"
-       - "Model download timeout"
+       - "CE1 model manifest is incomplete"
+       - "Model path is not readable"
+       - "Model files are missing"
 
-    b. **Cause**: Issues with NGC API key or model access permissions for Cosmos Embed NIM
+    b. **Cause**: The offline CE1 model snapshot is missing, incomplete, or inaccessible to the service.
 
     c. **Resolution**: 
-       - Verify the `NGC_API_KEY` environment variable is set correctly.
-       - Ensure the API key has access to the `nvidia/cosmos-embed` model.
-       - Check network connectivity to `nvcr.io`
-       - Increase timeout settings in the `cosmos-embed-override.yaml` file.
+       - Verify the model PVC is bound and mounted at `/models/cosmos-embed1`.
+       - Validate the model files against `cosmos-embed1-224p.sha256`.
+       - Confirm the files are readable by container UID 999.
+       - Review `kubectl logs deployment/cosmos-embed` for the exact validation error.
 
 11. **Problem**:
 
@@ -152,10 +152,10 @@ Here are some commonly occurring issues and ways to resolve them.
        - "Pod killed due to memory limit"
        - "cosmos-embed pod in CrashLoopBackOff"
 
-    b. **Cause**: Insufficient GPU memory for Cosmos Embed NIM model.
+    b. **Cause**: Insufficient GPU memory for CE1 OSS service model.
 
     c. **Resolution**:
-       - Increase GPU memory limits in `cosmos-embed-override.yaml`.
+       - Increase GPU memory limits in `cosmos-embed/values.yaml`.
        - Reduce batch sizes in pipeline configuration.
        - Use GPU with more memory (A100/H100 recommended).
        - Enable model quantization options if available.
@@ -167,7 +167,7 @@ Here are some commonly occurring issues and ways to resolve them.
        - "Persistent volume claim failed"
        - "Storage class not found: high-perf-gp3"
 
-    b. **Cause**: Storage configuration issues with the Cosmos Embed NIM model cache
+    b. **Cause**: Storage configuration issues with the CE1 OSS service model cache
 
     c. **Resolution**:
        - Verify the `high-perf-gp3` storage class is properly configured.
@@ -182,10 +182,10 @@ Here are some commonly occurring issues and ways to resolve them.
        - "Connection refused to cosmos-embed:8000"
        - "Timeout waiting for cosmos-embed to be ready"
 
-    b. **Cause**: Cosmos Embed NIM service has not properly started or health checks are failing.
+    b. **Cause**: The CE1 OSS service has not properly started or health checks are failing.
 
     c. **Resolution**:
-       - Check the pod status: `kubectl get pods -l app.kubernetes.io/name=nvidia-nim-cosmos-embed`
+       - Check the pod status: `kubectl get pods -l app.kubernetes.io/name=cosmos-embed`
        - Review the pod logs: `kubectl logs -f <cosmos-embed-pod-name>`
        - Verify GPU node scheduling and tolerances.
        - Check startup probe timeout settings (30+ minutes may be needed for the first boot).
@@ -241,7 +241,7 @@ make test-integration-logs
   ```bash
   docker compose -f deploy/standalone/docker-compose.build.yml logs visual-search --tail=50
   ```
-- Verify Cosmos-embed NIM is running and ready:
+- Verify CE1 OSS service is running and ready:
   ```bash
   curl http://localhost:9000/v1/health/ready
   ```

@@ -73,7 +73,7 @@ for pipeline in pipelines.get("pipelines", []):
     print(f"  Description: {pipeline['config']['index']['description']}")
 ```
 
-You should see the `cosmos_video_search_milvus` pipeline, which uses Cosmos-embed NIM for video embeddings and Milvus for vector storage.
+You should see the `cosmos_video_search_milvus` pipeline, which uses CE1 OSS service for video embeddings and Milvus for vector storage.
 
 ## Step 3: Create a Collection
 
@@ -356,7 +356,7 @@ python ingest_videos.py
 
 **Key Points:**
 - Use the `url` field with the presigned URL directly (no special formatting needed)
-- The API automatically handles the internal formatting for Cosmos-embed NIM
+- The API automatically handles the internal formatting for CE1 OSS service
 - The `mime_type` must be `'video/mp4'`
 - Script tests URL accessibility before ingesting
 
@@ -612,16 +612,15 @@ python api_tutorial_complete.py
 
 Now that you've learned the basics of the CDS REST API, continue your learning:
 
-**[Back to User Guide](user-guide.md)** - Explore other CDS interfaces (UI, CLI)
+**[Back to User Guide](user-guide.md)** - Explore the CDS CLI and REST API
 
 ### Continue Learning
 
 - **[Complete API Reference](../guides/api.md)** - Advanced operations including video-to-video search, filters, bulk operations, and more
 - **[API Troubleshooting](../guides/troubleshooting.md#rest-api-troubleshooting)** - Common API issues and solutions
-- **[OpenAPI Schema](../api_reference/openapi_schema_cvds.json)** - Machine-readable API specification
+- **[Live OpenAPI Schema](api_reference.md#live-openapi-schema)** - Machine-readable API specification from your deployed service
 
 ### Other Resources
 
-- **[UI User Guide](ui-user-guide.md)** - Interactive web interface walkthrough
 - **[MinIO Support Guide](../guides/minio-support.md)** - Configure alternative S3-compatible storage
 - **[Docker Compose Troubleshooting](troubleshooting-docker-compose.md)** - Deployment troubleshooting

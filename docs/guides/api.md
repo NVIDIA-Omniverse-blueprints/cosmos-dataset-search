@@ -154,14 +154,14 @@ curl -X POST http://localhost:8888/v1/insert-data \
     ],
     "access_key": "test",
     "secret_key": "test",
-    "endpoint_url": "http://localhost:4566"
+    "endpoint_url": "http://localstack:4566"
   }'
 ```
 
 **Storage Requirements:**
 - Files must be in S3 bucket or LocalStack accessible to Milvus
 - Use the same storage endpoint/credentials as configured in Milvus
-- For local development: `http://localhost:4566` (LocalStack) with bucket `cosmos-test-bucket`
+- For the Compose deployment: `http://localstack:4566` with bucket `cosmos-test-bucket`. The import request uses the service-visible endpoint, not the host's `localhost` address.
 - For production: your configured S3 bucket with proper IAM permissions
 
 ### Check Job Status
@@ -305,31 +305,31 @@ curl -X POST http://localhost:8888/v1/admin/collections/{collection_id}/flush
 curl -X GET http://localhost:8888/v1/metrics
 ```
 
-## Cosmos Embed NIM Service (Direct Access)
+## CE1 OSS Service (Direct Access)
 
 ### Text Embeddings
 ```bash
 # Single text embedding
-curl -X POST http://localhost:8090/v1/embeddings \
+curl -X POST http://localhost:9000/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{
     "input": "Hello, world!",
-    "model": "nvidia/nv-embedqa-e5-v5"
+    "model": "nvidia/cosmos-embed1"
   }'
 
 # Multiple text embeddings
-curl -X POST http://localhost:8090/v1/embeddings \
+curl -X POST http://localhost:9000/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{
     "input": ["Hello, world!", "How are you?", "This is a test"],
-    "model": "nvidia/nv-embedqa-e5-v5"
+    "model": "nvidia/cosmos-embed1"
   }'
 ```
 
-### NIM Health Check
+### CE1 OSS Health Check
 ```bash
-curl -X GET http://localhost:8090/v1/health/live
-curl -X GET http://localhost:8090/v1/health/ready
+curl -X GET http://localhost:9000/v1/health/live
+curl -X GET http://localhost:9000/v1/health/ready
 ```
 
 ## EKS Deployment Examples
@@ -396,7 +396,7 @@ For easier testing, set these environment variables:
 ```bash
 export API_BASE_URL="http://localhost:8888/v1"
 export COLLECTION_ID="your-collection-id"
-export COSMOS_EMBED_URL="http://localhost:8090"
+export COSMOS_EMBED_URL="http://localhost:9000"
 ```
 
 Then use in curl commands:
@@ -424,8 +424,8 @@ curl -X GET ${API_BASE_URL}/collections
    ```
 
 4. **Bulk Insert Failures**: Ensure parquet files are in Milvus-accessible storage
-   - Check Milvus configuration for storage settings  
-   - For local development: use LocalStack bucket `cosmos-test-bucket` at `http://localhost:4566`
+   - Check Milvus configuration for storage settings
+   - For Compose: use LocalStack bucket `cosmos-test-bucket` at the service-visible endpoint `http://localstack:4566`
    - For production: verify file paths use correct S3 bucket and Milvus has read permissions
 
 ### Debug Mode

@@ -1,59 +1,62 @@
-# API Reference
+# API reference
 
-## OpenAPI Schema
+## Live OpenAPI schema
 
-The complete OpenAPI schema is available in JSON format at:
-- **File**: [openapi_schema_cvds.json](../api_reference/openapi_schema_cvds.json)
-- **Live Documentation**: `http://localhost:8888/v1/docs` (when running locally)
-- **Raw Schema Endpoint**: `http://localhost:8888/v1/openapi.json`
+Use the schema served by your running CDS instance for request and response details. The public source export does not include a static schema snapshot.
 
-## Interactive Documentation
+| Endpoint | Standalone Compose | EKS ingress |
+| --- | --- | --- |
+| Swagger UI | `http://localhost:8888/v1/docs` | `https://<ingress-host>/api/v1/docs` |
+| ReDoc | `http://localhost:8888/v1/redoc` | `https://<ingress-host>/api/v1/redoc` |
+| Raw schema | `http://localhost:8888/v1/openapi.json` | `https://<ingress-host>/api/v1/openapi.json` |
+| CDS health | `http://localhost:8888/health` | `https://<ingress-host>/api/health` |
 
-When the CVDS service is running, you can access the interactive API documentation:
+The application schema still has a legacy version label. Identify the deployed release using its [image tag and digest](release-containers.md), not that label alone. CDS health checks process availability; verify CE1 readiness and ingestion/search separately.
 
-- **Swagger UI**: `http://localhost:8888/v1/docs`
-- **ReDoc**: `http://localhost:8888/v1/redoc`
+## CDS endpoints
 
-## Practical Examples
+Paths below are relative to the service root; add `/api` when using the EKS ingress.
 
-For hands-on curl examples and practical usage, see the [API Guide](../guides/api.md).
+| Method and path | Purpose |
+| --- | --- |
+| `GET /health` | CDS health |
+| `GET /v1/pipelines` | Available pipelines |
+| `GET /v1/pipelines/draw/{name}` | Pipeline diagram |
+| `POST /v1/collections` | Create a collection |
+| `GET /v1/collections` | List collections |
+| `GET /v1/collections/{collection_id}` | Collection details |
+| `PATCH /v1/collections/{collection_id}` | Update collection metadata |
+| `DELETE /v1/collections/{collection_id}` | Delete a collection |
+| `GET /v1/pipelines/{pipeline_id}/collections` | Collections for a pipeline |
+| `POST /v1/collections/{collection_id}/documents` | Index documents and generate embeddings |
+| `POST /v1/insert-data` | Start asynchronous S3 Parquet bulk import |
+| `GET /v1/job-status/{job_id}` | Bulk-import job status |
+| `GET /v1/jobs` | Bulk-import jobs |
+| `POST /v1/collections/{collection_id}/search` | Search a collection |
+| `POST /v1/retrieval` | Cross-collection retrieval |
+| `POST /v1/search_refinement/train` | Train a search-refinement model |
+| `GET /v1/metrics` | Prometheus metrics |
 
-## Key Endpoints Overview
+There is no default `/v1/secrets` CRUD API or `/search/hybrid` endpoint in this release. Provision storage credentials through your deployment's secret-management process and configure [storage Secret access](aws-eks-deployment.md#storage-secret-access).
 
-The CVDS API provides the following main endpoint categories:
+## Direct CE1 OSS API
 
-### Health & Status
-- `GET /v1/health` - Service health check
-- `GET /v1/pipelines` - List available pipelines
+Standalone Compose publishes CE1 on `http://localhost:9000` (container port 8000). These endpoints belong to CE1, not CDS's `/v1` router.
 
-### Collection Management
-- `POST /v1/collections` - Create new collection
-- `GET /v1/collections` - List all collections
-- `GET /v1/collections/{collection_id}` - Get collection details
-- `DELETE /v1/collections/{collection_id}` - Delete collection
+| Method and path | Purpose |
+| --- | --- |
+| `POST /v1/embeddings` | Text, video and batch embeddings |
+| `GET /v1/health/live` | Process liveness |
+| `GET /v1/health/ready` | Backend/model readiness; 503 when unavailable |
+| `GET /v1/models` | Model list |
+| `GET /v1/metadata` | Model/runtime metadata |
+| `GET /v1/license` | Service license metadata |
+| `GET /v1/manifest` | Service manifest |
+| `GET /v1/metrics` | Prometheus metrics |
+| `GET /v1/health/metrics` | JSON request statistics; `/health/metrics` is an alias |
 
-### Document Indexing
-- `POST /v1/collections/{collection_id}/documents` - Index documents
-- `POST /v1/collections/{collection_id}/embeddings` - Bulk embeddings ingestion
-- `POST /v1/collections/{collection_id}/status` - Check ingestion status
+Bulk text and bulk video use `request_type: "bulk_text"` and `request_type: "bulk_video"` on `/v1/embeddings`, not separate bulk routes. See the [API user guide](api-user-guide.md) and [curl examples](../guides/api.md).
 
-### Search & Retrieval
-- `POST /v1/collections/{collection_id}/search` - Semantic search
-- `POST /v1/collections/{collection_id}/search/hybrid` - Hybrid search
+## Access and limits
 
-### Pipeline Operations
-- `GET /v1/pipelines/{pipeline_id}/collections` - Get pipeline collections
-- `GET /v1/pipelines/{pipeline_id}/visualize` - Visualize pipeline
-
-### Secrets Management
-- `POST /v1/secrets` - Store secrets
-- `GET /v1/secrets` - List secrets
-- `DELETE /v1/secrets/{secret_name}` - Delete secret
-
-## Authentication
-
-Currently, the CVDS API does not require authentication for local development. For production deployments, refer to the [AWS EKS Deployment Guide](aws-eks-deployment.md) for security configuration.
-
-## Rate Limits
-
-See the [API Guide](../guides/api.md) for current rate limits and usage guidelines.
+CDS and CE1 do not implement customer authentication or authorization. Protect both APIs at your deployment boundary and configure TLS, allowed browser origins and rate limits. For supported source URLs and private storage, see [ingestion source settings](import-url-security.md).

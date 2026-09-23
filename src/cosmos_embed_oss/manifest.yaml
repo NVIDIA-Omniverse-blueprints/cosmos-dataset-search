@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+schema_version: "1.0"
+release: "1.2.0"
+model:
+  name: nvidia/cosmos-embed1
+  variant: 224p
+  embedding_dimension: 256
+  video_frames: 8
+runtime:
+  backend: pytorch
+  weights: offline-mounted
+  optimized_engines: false

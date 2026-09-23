@@ -1,12 +1,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 # Cluster configuration
 image:
@@ -16,6 +21,9 @@ image:
 
 minio:
   enabled: false
+
+log:
+  level: warn
 
 externalS3:
   enabled: true
@@ -261,8 +269,8 @@ kafka:
   enabled: true
   replicaCount: 3
   image:
-    registry: public.ecr.aws
-    repository: bitnami/kafka
+    registry: docker.io
+    repository: bitnamilegacy/kafka
     tag: 3.7.1
   heapOpts: "-Xmx8192M -Xms8192M"
   resources:
@@ -276,8 +284,8 @@ kafka:
       ephemeral-storage: "40Gi"
   zookeeper:
     image:
-      registry: public.ecr.aws
-      repository: bitnami/zookeeper
+      registry: docker.io
+      repository: bitnamilegacy/zookeeper
       tag: 3.8.4
     enabled: true
     replicaCount: 1

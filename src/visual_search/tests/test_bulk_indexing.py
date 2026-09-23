@@ -1,16 +1,21 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import types
 from datetime import datetime
-from unittest.mock import MagicMock, call
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from fastapi import FastAPI
@@ -105,6 +110,17 @@ def setup_pipelines(monkeypatch, pipelines):
 # --------------------------------------------------------------------------- #
 
 
+@pytest.fixture(autouse=True)
+def clear_s3_endpoint_policy(monkeypatch):
+    """Do not let developer or CI endpoint settings authorize a test request."""
+    for variable in (
+        "CDS_FETCH_S3_ENDPOINTS",
+        "AWS_ENDPOINT_URL",
+        "AWS_ENDPOINT_URL_S3",
+    ):
+        monkeypatch.delenv(variable, raising=False)
+
+
 @pytest.fixture
 def app():
     a = FastAPI()
@@ -138,6 +154,7 @@ def mock_get_collections(monkeypatch):
 def test_insert_data_success(monkeypatch, client, mock_get_collections):  # noqa: ARG001
     ds = make_store(bulk_insert_files=MagicMock(side_effect=[1, 2]))
     setup_pipelines(monkeypatch, {"coll": ds})
+    monkeypatch.setenv("CDS_FETCH_S3_ENDPOINTS", "http://example.com")
 
     payload = {
         "collection_name": "coll",
@@ -179,32 +196,210 @@ def test_insert_data_pipeline_not_found(monkeypatch, client, mock_get_collection
     assert resp.status_code == 404
 
 
-def test_insert_data_invalid_s3_path(monkeypatch, client, mock_get_collections):  # noqa: ARG001
-    """Test that non-S3 paths or improperly formatted S3 paths are rejected."""
+@pytest.mark.parametrize(
+    "invalid_path",
+    [
+        "s3://bucket-only",
+        "s3://bucket-only/",
+        "s3://",
+        "s3:///file.parquet",
+        "s3://[invalid]/file.parquet",
+        "",
+        "/local/path/file.parquet",
+        "file:///etc/passwd",
+        "http://169.254.169.254/latest/meta-data/",
+        "https://example.com/file.parquet",
+        "file.parquet",
+        "simplecache::s3://test-bucket/file.parquet",
+        "s3://test-bucket/file.parquet::file:///etc/passwd",
+        "zip://file.parquet::s3://test-bucket/archive.zip",
+        "s3://user:password@test-bucket/file.parquet",
+        "s3://test-bucket:9000/file.parquet",
+        "s3://test-bucket/*.parquet",
+        "s3://test-bucket/file?.parquet",
+        "s3://test-bucket/file[12].parquet",
+        "s3://test-bucket/file.parquet?other=value",
+        "s3://test-bucket/file.parquet#fragment",
+        "s3://test-bucket/../file.parquet",
+        "s3://test-bucket/./file.parquet",
+        "s3://test-bucket/path\\file.parquet",
+        " s3://test-bucket/file.parquet",
+        "s3://test-bucket/file.parquet\n",
+    ],
+)
+@pytest.mark.parametrize("valid_path_first", [False, True], ids=["invalid-only", "mixed-batch"])
+def test_insert_data_invalid_s3_path(
+    monkeypatch, client, mock_get_collections, invalid_path, valid_path_first
+):  # noqa: ARG001
+    """Reject the entire batch before even reading the first valid file."""
     ds = make_store(bulk_insert_files=MagicMock())
     setup_pipelines(monkeypatch, {"coll": ds})
-    
-    # Test invalid S3 paths
-    invalid_paths = [
-        "s3://bucket-only",  # No path after bucket
-        "s3://",  # Empty bucket
-        "/local/path/file.parquet",  # Not S3
-        "https://example.com/file.parquet",  # Not S3
-        "file.parquet",  # Relative path
-    ]
-    
-    for invalid_path in invalid_paths:
-        payload = {
+    resolve_pipeline = MagicMock()
+    validate_schema = AsyncMock()
+    build_options = MagicMock()
+    monkeypatch.setattr(bi, "_resolve_pipeline", resolve_pipeline)
+    monkeypatch.setattr(bi, "validate_parquet_schema", validate_schema)
+    monkeypatch.setattr(bi, "build_storage_options", build_options)
+    paths = ["s3://test-bucket/valid.parquet"] if valid_path_first else []
+    paths.append(invalid_path)
+
+    resp = client.post(
+        "/insert-data",
+        json={"collection_name": "coll", "parquet_paths": paths},
+    )
+
+    assert resp.status_code == 400
+    assert "s3://bucket/key" in resp.json()["detail"]
+    resolve_pipeline.assert_not_called()
+    build_options.assert_not_called()
+    validate_schema.assert_not_called()
+    ds.bulk_insert_files.assert_not_called()
+
+
+def test_insert_data_empty_batch_rejected_before_io(monkeypatch, client):
+    ds = make_store()
+    setup_pipelines(monkeypatch, {"coll": ds})
+    resolve_pipeline = MagicMock()
+    validate_schema = AsyncMock()
+    monkeypatch.setattr(bi, "_resolve_pipeline", resolve_pipeline)
+    monkeypatch.setattr(bi, "validate_parquet_schema", validate_schema)
+
+    resp = client.post(
+        "/insert-data", json={"collection_name": "coll", "parquet_paths": []}
+    )
+
+    assert resp.status_code == 400
+    resolve_pipeline.assert_not_called()
+    validate_schema.assert_not_called()
+    ds.bulk_insert_files.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "endpoint_url",
+    [
+        "https://unapproved.example.com",
+        "http://127.0.0.1:9000",
+        "http://169.254.169.254",
+        "http://[::1]:9000",
+        "http://10.0.0.12:9000",
+        "https://storage.example.com.attacker.example",
+        "https://sub.storage.example.com",
+        "http://storage.example.com",
+        "https://storage.example.com:9443",
+        "https://storage.example.com/other-path",
+        "https://storage.example.com?redirect=internal",
+        "https://storage.example.com#fragment",
+        "https://user:password@storage.example.com",
+    ],
+)
+def test_insert_data_unapproved_endpoint_rejected_before_io(
+    monkeypatch, client, endpoint_url
+):
+    ds = make_store()
+    setup_pipelines(monkeypatch, {"coll": ds})
+    monkeypatch.setenv("CDS_FETCH_S3_ENDPOINTS", "https://storage.example.com")
+    resolve_pipeline = MagicMock()
+    validate_schema = AsyncMock()
+    build_options = MagicMock()
+    monkeypatch.setattr(bi, "_resolve_pipeline", resolve_pipeline)
+    monkeypatch.setattr(bi, "validate_parquet_schema", validate_schema)
+    monkeypatch.setattr(bi, "build_storage_options", build_options)
+
+    resp = client.post(
+        "/insert-data",
+        json={
             "collection_name": "coll",
-            "parquet_paths": [invalid_path],
+            "parquet_paths": ["s3://test-bucket/file.parquet"],
             "access_key": "ak",
             "secret_key": "sk",
-            "endpoint_url": "http://example.com",
-        }
-        resp = client.post("/insert-data", json=payload)
-        assert resp.status_code == 400
-        assert "Invalid S3 path format" in resp.text
-        assert "s3://bucket/path/to/file.parquet" in resp.text
+            "endpoint_url": endpoint_url,
+        },
+    )
+
+    assert resp.status_code == 400
+    resolve_pipeline.assert_not_called()
+    build_options.assert_not_called()
+    validate_schema.assert_not_called()
+    ds.bulk_insert_files.assert_not_called()
+
+
+def test_insert_data_request_cannot_configure_its_own_endpoint(monkeypatch, client):
+    ds = make_store()
+    setup_pipelines(monkeypatch, {"coll": ds})
+    resolve_pipeline = MagicMock()
+    validate_schema = AsyncMock()
+    monkeypatch.setattr(bi, "_resolve_pipeline", resolve_pipeline)
+    monkeypatch.setattr(bi, "validate_parquet_schema", validate_schema)
+
+    resp = client.post(
+        "/insert-data",
+        json={
+            "collection_name": "coll",
+            "parquet_paths": ["s3://test-bucket/file.parquet"],
+            "endpoint_url": "https://storage.example.com",
+        },
+    )
+
+    assert resp.status_code == 400
+    assert "operator-configured" in resp.json()["detail"]
+    resolve_pipeline.assert_not_called()
+    validate_schema.assert_not_called()
+    ds.bulk_insert_files.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "endpoint_variable",
+    ["CDS_FETCH_S3_ENDPOINTS", "AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_S3"],
+)
+def test_insert_data_operator_configured_endpoint_allowed(
+    monkeypatch, client, mock_get_collections, endpoint_variable
+):  # noqa: ARG001
+    """An explicitly configured private MinIO endpoint remains supported."""
+    ds = make_store(bulk_insert_files=MagicMock(return_value=42))
+    setup_pipelines(monkeypatch, {"coll": ds})
+    monkeypatch.setenv(endpoint_variable, "http://minio.internal:9000")
+    validate_schema = AsyncMock()
+    monkeypatch.setattr(bi, "validate_parquet_schema", validate_schema)
+
+    resp = client.post(
+        "/insert-data",
+        json={
+            "collection_name": "coll",
+            "parquet_paths": ["s3://test-bucket/path/file.parquet"],
+            "access_key": "ak",
+            "secret_key": "sk",
+            "endpoint_url": "http://minio.internal:9000/",
+        },
+    )
+
+    assert resp.status_code == 202
+    assert resp.json()["job_id"] == "42"
+    validate_schema.assert_awaited_once_with(
+        "s3://test-bucket/path/file.parquet", "coll", {}, ds.client._using
+    )
+    ds.bulk_insert_files.assert_called_once_with(
+        collection_name="coll", file_paths=["path/file.parquet"]
+    )
+
+
+def test_insert_data_default_s3_endpoint_allowed(monkeypatch, client, mock_get_collections):  # noqa: ARG001
+    ds = make_store(bulk_insert_files=MagicMock(return_value=42))
+    setup_pipelines(monkeypatch, {"coll": ds})
+    validate_schema = AsyncMock()
+    monkeypatch.setattr(bi, "validate_parquet_schema", validate_schema)
+
+    resp = client.post(
+        "/insert-data",
+        json={"collection_name": "coll", "parquet_paths": ["s3://test-bucket/file.parquet"]},
+    )
+
+    assert resp.status_code == 202
+    validate_schema.assert_awaited_once_with(
+        "s3://test-bucket/file.parquet", "coll", {}, ds.client._using
+    )
+    ds.bulk_insert_files.assert_called_once_with(
+        collection_name="coll", file_paths=["file.parquet"]
+    )
 
 
 def test_job_status_success(monkeypatch, client):

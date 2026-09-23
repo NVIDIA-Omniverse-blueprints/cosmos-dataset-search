@@ -293,7 +293,7 @@ docker exec cds-deployment bash -c "kubectl describe pod <pod-name> | grep -A 20
 
 **Check**:
 ```bash
-docker exec cds-deployment bash -c "kubectl logs -l app.kubernetes.io/name=nvidia-nim-cosmos-embed --tail=50"
+docker exec cds-deployment bash -c "kubectl logs -l app.kubernetes.io/name=cosmos-embed --tail=50"
 ```
 
 **This is usually normal**: Cosmos-embed downloads ~20GB model on first start.
@@ -310,7 +310,7 @@ INFO Downloaded filename: Cosmos-Embed1/model-00002-of-00005.safetensors
 
 **Check pod resource limits**:
 ```bash
-docker exec cds-deployment bash -c "kubectl describe pod -l app.kubernetes.io/name=nvidia-nim-cosmos-embed | grep -A 10 Limits"
+docker exec cds-deployment bash -c "kubectl describe pod -l app.kubernetes.io/name=cosmos-embed | grep -A 10 Limits"
 ```
 
 **Check node memory**:
@@ -418,11 +418,11 @@ docker exec cds-deployment bash -c "kubectl logs deployment/visual-search --tail
 - Can't connect to Cosmos-embed: Check cosmos-embed pod is ready
 - 500 errors: Check logs for specific error messages
 
-### Cosmos-embed NIM
+### CE1 OSS service
 
 **Check pod status**:
 ```bash
-docker exec cds-deployment bash -c "kubectl get pods -l app.kubernetes.io/name=nvidia-nim-cosmos-embed"
+docker exec cds-deployment bash -c "kubectl get pods -l app.kubernetes.io/name=cosmos-embed"
 ```
 
 **Debug script** available:
@@ -473,18 +473,6 @@ Should show IAM role ARN annotation.
 ```bash
 docker exec cds-deployment bash -c "kubectl run -it --rm s3-test --image=amazon/aws-cli --serviceaccount=s3-access-sa --restart=Never -- s3 ls s3://$S3_BUCKET_NAME/"
 ```
-
-### Web UI
-
-**Check UI pod**:
-```bash
-docker exec cds-deployment bash -c "kubectl get pods -l app=visual-search-react-ui"
-docker exec cds-deployment bash -c "kubectl logs deployment/visual-search-react-ui --tail=50"
-```
-
-**Check UI can reach API**:
-- UI needs ingress hostname configured
-- Check environment variables in UI pod
 
 ## Debugging Techniques
 
@@ -593,7 +581,7 @@ Look for `total_documents_count` in output.
 
 **Check Cosmos-embed is working**:
 ```bash
-docker exec cds-deployment bash -c "kubectl logs -l app.kubernetes.io/name=nvidia-nim-cosmos-embed --tail=50"
+docker exec cds-deployment bash -c "kubectl logs -l app.kubernetes.io/name=cosmos-embed --tail=50"
 ```
 
 **Test Cosmos-embed endpoint**:
@@ -612,7 +600,7 @@ curl -k http://localhost:8000/v1/health/ready
 docker exec cds-deployment bash -c "kubectl rollout restart deployment/visual-search"
 
 # Restart cosmos-embed
-docker exec cds-deployment bash -c "kubectl rollout restart deployment/cosmos-embed-nvidia-nim-cosmos-embed"
+docker exec cds-deployment bash -c "kubectl rollout restart deployment/cosmos-embed"
 
 # Restart Milvus component
 docker exec cds-deployment bash -c "kubectl rollout restart deployment/milvus-proxy"
@@ -653,7 +641,7 @@ docker exec cds-deployment bash -c "kubectl get events --sort-by='.lastTimestamp
 
 # Service logs
 docker exec cds-deployment bash -c "kubectl logs deployment/visual-search --tail=200"
-docker exec cds-deployment bash -c "kubectl logs -l app.kubernetes.io/name=nvidia-nim-cosmos-embed --tail=200"
+docker exec cds-deployment bash -c "kubectl logs -l app.kubernetes.io/name=cosmos-embed --tail=200"
 
 # Node status
 docker exec cds-deployment bash -c "kubectl get nodes"
@@ -676,6 +664,6 @@ Include:
 - [AWS EKS Best Practices](https://aws.github.io/aws-eks-best-practices/)
 - [Kubernetes Documentation](https://kubernetes.io/docs/)
 - [Milvus Troubleshooting](https://milvus.io/docs/troubleshooting.md)
-- [NVIDIA NIM Documentation](https://docs.nvidia.com/nim/)
+- [CE1 OSS model files](https://huggingface.co/nvidia/Cosmos-Embed1-224p)
 - [AWS EKS Deployment Guide](aws-eks-deployment.md)
 - [CLI User Guide](cli-user-guide.md)

@@ -1,14 +1,24 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 replicaCount: 1
+
+# Allow only the named storage Secrets required by your deployment.
+# Example: [customer-s3-credentials]. No list/watch or wildcard access.
+secretAccess:
+  allowedNames: []
 
 imagePullSecret: "nvcr-io"
 
@@ -44,28 +54,32 @@ secret:
     key: "api_key"
 
 env:
+  # Exact origins for optional outbound-import restrictions/private storage.
+  CDS_FETCH_ALLOWED_ORIGINS: ""
+  CDS_FETCH_PRIVATE_ORIGINS: ""
+  CDS_FETCH_S3_ENDPOINTS: ""
+  CDS_FETCH_MAX_TEXT_BYTES: "16777216"
   MAX_DOCS_PER_UPLOAD: "100"
   GUNICORN_PORT: "11000"
   GUNICORN_TIMEOUT: "300"
   GUNICORN_WORKERS: "5"
   FASTAPI_ROOT_PATH: "/api"
   NVIDIA_API_KEY: "{{ .Env.NGC_API_KEY }}"
-  # Cosmos-embed configuration for video embeddings
-  COSMOS_EMBED_NIM_URI: "cosmos-embed-nvidia-nim-cosmos-embed.default.svc.cluster.local:8000"
+  # CE1 OSS service configuration for video embeddings
+  COSMOS_EMBED_URI: "http://cosmos-embed.default.svc.cluster.local:8000"
 
 
 resources:
   requests:
     visualSearchCpu: "500m"
     cdnCpu: "250m"
-    reactUiCpu: "100m"
 
 
 cosmosEmbed:
   name: "cosmos-embed"
   image:
-    repository: "nvcr.io/nim/nvidia/cosmos-embed1"
-    tag: "1.0.0"
+    repository: "nvcr.io/nvidia/blueprint/cosmos-embed1-oss"
+    tag: "1.2.0"
   ports:
     - name: http
       port: 8000
@@ -75,14 +89,6 @@ visualSearch:
   name: "visual-search"
   image:
     repository: "nvcr.io/nvidia/blueprint/cosmos-dataset-search"
-    tag: "1.0.0"
+    tag: "1.2.0"
   port: 8888
   containerPort: 8888
-
-visualSearchReactUi:
-  name: "visual-search-react-ui"
-  image:
-    repository: "nvcr.io/nvidia/blueprint/cosmos-cds-ui"
-    tag: "1.0.0"
-  port: 8080
-  containerPort: 8080

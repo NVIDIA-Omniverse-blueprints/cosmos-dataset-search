@@ -1,13 +1,18 @@
 #!/bin/bash
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 set -eo pipefail
 
@@ -26,21 +31,48 @@ source ./configuration.sh
 
 ./secrets.sh
 
-kubectl apply -f visual-search/templates/secret-access-rbac.yaml
+# The visual-search Helm release below renders and manages its Secret RBAC.
+# Do not pass Helm template files directly to kubectl.
 
-helm upgrade --install cosmos-embed ./triton-cosmos-embed \
-  --values cosmos-embed-override.yaml \
+COSMOS_EMBED_SERVICE_MODE="${COSMOS_EMBED_SERVICE_MODE:-oss}"
+COSMOS_EMBED_HELM_ARGS=()
+EXPECT_CE1_OSS_RUNTIME=true
+
+if [ "${COSMOS_EMBED_SERVICE_MODE}" != "oss" ]; then
+  echo "Error: COSMOS_EMBED_SERVICE_MODE must be 'oss' for this release; got '${COSMOS_EMBED_SERVICE_MODE}'" >&2
+  exit 1
+fi
+if [ -z "${COSMOS_EMBED_OSS_MODEL_PVC:-}" ]; then
+  echo "Error: COSMOS_EMBED_OSS_MODEL_PVC must name a pre-provisioned PVC" >&2
+  echo "CI must provide offline CE1 model weights through that PVC; runtime Hugging Face downloads are disabled by default." >&2
+  exit 1
+fi
+
+COSMOS_EMBED_OSS_IMAGE_REPOSITORY="${COSMOS_EMBED_OSS_IMAGE_REPOSITORY:-nvcr.io/nvidia/blueprint/cosmos-embed1-oss}"
+COSMOS_EMBED_OSS_IMAGE_TAG="${COSMOS_EMBED_OSS_IMAGE_TAG:-1.2.0}"
+COSMOS_EMBED_HELM_ARGS+=(
+  --set-string "image.repository=${COSMOS_EMBED_OSS_IMAGE_REPOSITORY}"
+  --set-string "image.tag=${COSMOS_EMBED_OSS_IMAGE_TAG}"
+  --set-string "extraVolumes.ce1-oss-model.persistentVolumeClaim.claimName=${COSMOS_EMBED_OSS_MODEL_PVC}"
+  --set-string "envVars.COSMOS_EMBED_ALLOW_HF_DOWNLOAD=${COSMOS_EMBED_ALLOW_HF_DOWNLOAD:-false}"
+)
+echo "Deploying CE1 OSS PyTorch image ${COSMOS_EMBED_OSS_IMAGE_REPOSITORY}:${COSMOS_EMBED_OSS_IMAGE_TAG} with model PVC ${COSMOS_EMBED_OSS_MODEL_PVC}"
+
+helm upgrade --install cosmos-embed ./cosmos-embed \
+  "${COSMOS_EMBED_HELM_ARGS[@]}" \
   --timeout 45m
 
 # Use CI_COMMIT_SHORT_SHA only in CI environment, otherwise use fixed version
 if [ -n "${GITLAB_CI:-}" ] && [ "${IS_RELEASE:-false}" = "false" ]; then
-  CI_COMMIT_SHORT_SHA=$(git rev-parse --short=8 HEAD) # Short SHA for CI environment
-  echo "Running in GitLab CI environment, using image tag: ${CI_COMMIT_SHORT_SHA}"
+  VISUAL_SEARCH_IMAGE_REPOSITORY="${VISUAL_SEARCH_IMAGE_REPOSITORY:-nvcr.io/nvidia/blueprint/cosmos-dataset-search}"
+  VISUAL_SEARCH_IMAGE_TAG="${VISUAL_SEARCH_IMAGE_TAG:-${CI_COMMIT_SHORT_SHA:-$(git rev-parse --short=8 HEAD)}}"
+  echo "Running in GitLab CI environment, using visual-search image: ${VISUAL_SEARCH_IMAGE_REPOSITORY}:${VISUAL_SEARCH_IMAGE_TAG}"
   helm upgrade --install visual-search visual-search \
     --values values.yaml \
-    --set-string visualSearch.image.tag="${CI_COMMIT_SHORT_SHA}"
+    --set-string visualSearch.image.repository="${VISUAL_SEARCH_IMAGE_REPOSITORY}" \
+    --set-string visualSearch.image.tag="${VISUAL_SEARCH_IMAGE_TAG}"
 else
-  echo "Running in production environment, using fixed image tag from values.yaml (0.6.0)"
+  echo "Running in production environment, using fixed image tag from values.yaml (1.2.0)"
   helm upgrade --install visual-search visual-search \
     --values values.yaml
 fi
@@ -148,25 +180,32 @@ done
 
 ./check_ingress_hostname.sh
 
-INGRESS_HOSTNAME=$(kubectl get ingress simple-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-if [[ -n "$INGRESS_HOSTNAME" ]]; then
-    echo "Installing visual-search-react-ui with ingress hostname: $INGRESS_HOSTNAME"
-    echo "Current directory: $(pwd)"
-    echo "Checking for UI values file: $(ls -la visual-search-react-ui/values.yaml 2>/dev/null || echo 'NOT FOUND')"
-    helm install visual-search-react-ui ./visual-search-react-ui \
-      --values values.yaml \
-      --values visual-search-react-ui/values.yaml \
-      --set global.ingress.host="$INGRESS_HOSTNAME"
-else
-    echo "ERROR: Could not determine ingress hostname after waiting"
-    echo "The UI deployment requires a valid ingress hostname to set CVDS_UI_URL correctly"
-    echo "Please check the ingress status and retry deployment"
-    kubectl get ingress simple-ingress -o wide
-    exit 1
-fi
-
 echo "Performing final health check for all services..."
-echo "Will monitor pod status every 2 minutes until all services are ready (no timeout)..."
+K8S_HEALTH_CHECK_TIMEOUT_SECONDS="${K8S_HEALTH_CHECK_TIMEOUT_SECONDS:-3600}"
+if [[ ! "${K8S_HEALTH_CHECK_TIMEOUT_SECONDS}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "Error: K8S_HEALTH_CHECK_TIMEOUT_SECONDS must be a positive integer" >&2
+  exit 1
+fi
+HEALTH_CHECK_DEADLINE=$((SECONDS + K8S_HEALTH_CHECK_TIMEOUT_SECONDS))
+
+dump_cosmos_embed_diagnostics() {
+  local pod_name
+  pod_name="$(kubectl get pods \
+    -l app.kubernetes.io/name=cosmos-embed \
+    -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+  if [ -z "${pod_name}" ]; then
+    echo "No Cosmos-Embed pod exists for diagnostics."
+    return
+  fi
+  echo "Cosmos-Embed pod diagnostics for ${pod_name}:"
+  kubectl describe pod "${pod_name}" || true
+  echo "Cosmos-Embed current logs:"
+  kubectl logs "${pod_name}" --tail=500 || true
+  echo "Cosmos-Embed previous logs, when available:"
+  kubectl logs "${pod_name}" --previous --tail=500 || true
+}
+
+echo "Will monitor pod status every 2 minutes for up to ${K8S_HEALTH_CHECK_TIMEOUT_SECONDS} seconds..."
 
 while true; do
   echo "==================== $(date) ===================="
@@ -200,7 +239,20 @@ while true; do
   if [ "$FAILED_PODS" -gt 0 ]; then
     echo "ERROR: Found $FAILED_PODS failed pods."
     kubectl get pods | awk 'NR==1 || $3 ~ /^(Failed|Error|CrashLoopBackOff|ImagePullBackOff|ErrImagePull|CreateContainerConfigError|CreateContainerError|RunContainerError|ContainerCannotRun|StartError|StartContainerError)$/'
+    dump_cosmos_embed_diagnostics
     exit 1
+  fi
+
+  if [ "${EXPECT_CE1_OSS_RUNTIME}" = "true" ]; then
+    COSMOS_EMBED_RESTARTS="$(kubectl get pods \
+      -l app.kubernetes.io/name=cosmos-embed \
+      -o jsonpath='{range .items[*].status.containerStatuses[*]}{.restartCount}{"\n"}{end}' \
+      2>/dev/null | awk '{sum += $1} END {print sum + 0}')"
+    if [ "${COSMOS_EMBED_RESTARTS}" -gt 0 ]; then
+      echo "ERROR: CE1 OSS restarted ${COSMOS_EMBED_RESTARTS} time(s) before becoming ready."
+      dump_cosmos_embed_diagnostics
+      exit 1
+    fi
   fi
 
   if [ "$PENDING_PODS" -eq 0 ] && [ "$NOT_READY" -eq 0 ]; then
@@ -208,6 +260,12 @@ while true; do
     echo "Final pod status:"
     kubectl get pods
     break
+  fi
+
+  if [ "${SECONDS}" -ge "${HEALTH_CHECK_DEADLINE}" ]; then
+    echo "ERROR: Services did not become ready within ${K8S_HEALTH_CHECK_TIMEOUT_SECONDS} seconds."
+    dump_cosmos_embed_diagnostics
+    exit 1
   fi
 
   echo "Status summary: pending=$PENDING_PODS, not_ready=$NOT_READY, failed=$FAILED_PODS"

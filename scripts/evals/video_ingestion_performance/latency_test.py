@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 import argparse
 import csv
@@ -18,11 +23,11 @@ import random
 import string
 import sys
 import time
+from collections import defaultdict
 from multiprocessing import Process, Queue, current_process
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
-from collections import defaultdict
 
 # Pool of realistic video search queries (actions, subjects, scenes, events)
 SEARCH_QUERY_POOL: List[str] = [
@@ -380,7 +385,7 @@ def user_worker(
             pass
 
 
-def nim_embed_latency(base_url: str, model: str, text: str, timeout: int = 120) -> float:
+def embed_latency(base_url: str, model: str, text: str, timeout: int = 120) -> float:
     url = f"{base_url}/v1/embeddings"
     headers = {"Content-Type": "application/json"}
     payload = {
@@ -439,8 +444,8 @@ def latency_test(
     search_params: Dict[str, Any],
     filters: Dict[str, Any],
     generate_asset_url: bool,
-    nim_base_url: Optional[str] = None,
-    nim_model: str = "nvidia/cosmos-embed1",
+    embed_base_url: Optional[str] = None,
+    embed_model: str = "nvidia/cosmos-embed1",
     simple_iters: int = 10,
     query_pool_size: int = 0,
 ):
@@ -475,7 +480,9 @@ def latency_test(
 
     # Measure simple endpoints on VS
     print(f"Measuring VS baseline endpoints (simple_iters={simple_iters}) ...")
-    simple_vs = measure_simple_endpoints(base_url, collection_id, iterations=simple_iters)
+    simple_vs = measure_simple_endpoints(
+        base_url, collection_id, iterations=simple_iters
+    )
     baseline_candidates: List[float] = []
     for url, lats in simple_vs.items():
         if ("/health" in url) or ("/ready" in url):
@@ -483,8 +490,12 @@ def latency_test(
     if not baseline_candidates:
         for lats in simple_vs.values():
             baseline_candidates.extend(lats)
-    vs_baseline_avg = (sum(baseline_candidates) / len(baseline_candidates)) if baseline_candidates else float("nan")
-    vs_baseline_min = (min(baseline_candidates) if baseline_candidates else float("nan"))
+    vs_baseline_avg = (
+        (sum(baseline_candidates) / len(baseline_candidates))
+        if baseline_candidates
+        else float("nan")
+    )
+    vs_baseline_min = min(baseline_candidates) if baseline_candidates else float("nan")
     vs_baseline_samples = len(baseline_candidates)
     end_time = time.perf_counter() + duration_sec
     print("Starting main search loop ...")
@@ -572,41 +583,53 @@ def latency_test(
     # Breakdown
     vs_travel_avg = vs_baseline_avg
     vs_travel_min = vs_baseline_min
-    vs_search_only_avg = (avg_lat - vs_travel_avg) if not math.isnan(avg_lat) and not math.isnan(vs_travel_avg) else float("nan")
-    vs_search_only_min = (min_lat - vs_travel_min) if not math.isnan(min_lat) and not math.isnan(vs_travel_min) else float("nan")
+    vs_search_only_avg = (
+        (avg_lat - vs_travel_avg)
+        if not math.isnan(avg_lat) and not math.isnan(vs_travel_avg)
+        else float("nan")
+    )
+    vs_search_only_min = (
+        (min_lat - vs_travel_min)
+        if not math.isnan(min_lat) and not math.isnan(vs_travel_min)
+        else float("nan")
+    )
 
-    # Optional NIM
-    nim_latencies: List[float] = []
-    nim_baseline_avg = float("nan")
-    nim_baseline_min = float("nan")
-    nim_baseline_samples = 0
-    if nim_base_url:
-        # Prefer NIM /v1/health/ready as baseline per guidance
-        print(f"Measuring NIM baseline /v1/health/ready (simple_iters={simple_iters}) ...")
-        nim_ready_lats: List[float] = []
+    # Optional Cosmos Embed service
+    embed_latencies: List[float] = []
+    embed_baseline_avg = float("nan")
+    embed_baseline_min = float("nan")
+    embed_baseline_samples = 0
+    if embed_base_url:
+        # Prefer Cosmos Embed service /v1/health/ready as baseline per guidance
+        print(
+            f"Measuring Cosmos Embed service baseline /v1/health/ready (simple_iters={simple_iters}) ..."
+        )
+        embed_ready_lats: List[float] = []
         for _ in range(max(1, simple_iters)):
             t0 = time.perf_counter()
             try:
-                rr = requests.get(f"{nim_base_url}/v1/health/ready", timeout=5)
+                rr = requests.get(f"{embed_base_url}/v1/health/ready", timeout=5)
                 rr.raise_for_status()
                 t1 = time.perf_counter()
-                nim_ready_lats.append(t1 - t0)
+                embed_ready_lats.append(t1 - t0)
             except Exception:
                 pass
-        nim_baseline_samples = len(nim_ready_lats)
-        if nim_ready_lats:
-            nim_baseline_avg = sum(nim_ready_lats) / len(nim_ready_lats)
-            nim_baseline_min = min(nim_ready_lats)
+        embed_baseline_samples = len(embed_ready_lats)
+        if embed_ready_lats:
+            embed_baseline_avg = sum(embed_ready_lats) / len(embed_ready_lats)
+            embed_baseline_min = min(embed_ready_lats)
         print(
-            f"NIM baseline collected: samples={nim_baseline_samples}, min/avg={nim_baseline_min if nim_ready_lats else float('nan'):.3f}/{nim_baseline_avg if nim_ready_lats else float('nan'):.3f}"
+            f"Cosmos Embed service baseline collected: samples={embed_baseline_samples}, min/avg={embed_baseline_min if embed_ready_lats else float('nan'):.3f}/{embed_baseline_avg if embed_ready_lats else float('nan'):.3f}"
         )
 
-        print(f"Running NIM embedding latency sampling for {simple_iters} iterations ...")
+        print(
+            f"Running Cosmos Embed service embedding latency sampling for {simple_iters} iterations ..."
+        )
         for _ in range(max(1, simple_iters)):
             text = random.choice(active_pool)
             try:
-                lt = nim_embed_latency(nim_base_url, nim_model, text)
-                nim_latencies.append(lt)
+                lt = embed_latency(embed_base_url, embed_model, text)
+                embed_latencies.append(lt)
             except Exception:
                 pass
 
@@ -625,49 +648,109 @@ def latency_test(
             report_writer.writerow(["vs", "searches_per_sec", f"{sps:.6f}"])
             report_writer.writerow(["vs", "baseline_min_sec", f"{vs_baseline_min:.6f}"])
             report_writer.writerow(["vs", "baseline_avg_sec", f"{vs_baseline_avg:.6f}"])
-            report_writer.writerow(["vs", "search_only_min_sec", f"{vs_search_only_min:.6f}"])
-            report_writer.writerow(["vs", "search_only_avg_sec", f"{vs_search_only_avg:.6f}"])
+            report_writer.writerow(
+                ["vs", "search_only_min_sec", f"{vs_search_only_min:.6f}"]
+            )
+            report_writer.writerow(
+                ["vs", "search_only_avg_sec", f"{vs_search_only_avg:.6f}"]
+            )
             report_writer.writerow(["vs", "baseline_samples", vs_baseline_samples])
             report_writer.writerow(["vs", "collection_id", collection_id])
-            report_writer.writerow(["vs", "collection_items", collection_items if collection_items is not None else "unknown"])
+            report_writer.writerow(
+                [
+                    "vs",
+                    "collection_items",
+                    collection_items if collection_items is not None else "unknown",
+                ]
+            )
 
             for url, lats in simple_vs.items():
                 if lats:
-                    report_writer.writerow(["vs_endpoint", url, f"min={min(lats):.6f};avg={(sum(lats)/len(lats)):.6f};max={max(lats):.6f}"])
+                    report_writer.writerow(
+                        [
+                            "vs_endpoint",
+                            url,
+                            f"min={min(lats):.6f};avg={(sum(lats)/len(lats)):.6f};max={max(lats):.6f}",
+                        ]
+                    )
                 else:
                     report_writer.writerow(["vs_endpoint", url, "no_success"])
 
-            if nim_base_url:
-                if nim_latencies:
-                    nim_min = min(nim_latencies)
-                    nim_max = max(nim_latencies)
-                    nim_avg = sum(nim_latencies) / len(nim_latencies)
+            if embed_base_url:
+                if embed_latencies:
+                    embed_min = min(embed_latencies)
+                    embed_max = max(embed_latencies)
+                    embed_avg = sum(embed_latencies) / len(embed_latencies)
                 else:
-                    nim_min = nim_max = nim_avg = float("nan")
-                report_writer.writerow(["nim", "min_latency_sec", f"{nim_min:.6f}"])
-                report_writer.writerow(["nim", "avg_latency_sec", f"{nim_avg:.6f}"])
-                report_writer.writerow(["nim", "max_latency_sec", f"{nim_max:.6f}"])
-                report_writer.writerow(["nim", "baseline_min_sec", f"{nim_baseline_min:.6f}"])
-                report_writer.writerow(["nim", "baseline_avg_sec", f"{nim_baseline_avg:.6f}"])
-                report_writer.writerow(["nim", "baseline_samples", nim_baseline_samples])
-                report_writer.writerow(["nim", "samples", len(nim_latencies)])
-                cosmos_embed_avg = (nim_avg - nim_baseline_avg) if not math.isnan(nim_avg) and not math.isnan(nim_baseline_avg) else float("nan")
-                milvus_avg = (avg_lat - vs_baseline_avg - cosmos_embed_avg) if (not math.isnan(avg_lat) and not math.isnan(vs_baseline_avg) and not math.isnan(cosmos_embed_avg)) else float("nan")
-                report_writer.writerow(["breakdown", "travel_avg_sec", f"{vs_baseline_avg:.6f}"])
-                report_writer.writerow(["breakdown", "cosmos_embed_avg_sec", f"{cosmos_embed_avg:.6f}"])
-                report_writer.writerow(["breakdown", "milvus_search_avg_sec", f"{max(0.0, milvus_avg):.6f}"])
+                    embed_min = embed_max = embed_avg = float("nan")
+                report_writer.writerow(
+                    ["cosmos_embed", "min_latency_sec", f"{embed_min:.6f}"]
+                )
+                report_writer.writerow(
+                    ["cosmos_embed", "avg_latency_sec", f"{embed_avg:.6f}"]
+                )
+                report_writer.writerow(
+                    ["cosmos_embed", "max_latency_sec", f"{embed_max:.6f}"]
+                )
+                report_writer.writerow(
+                    ["cosmos_embed", "baseline_min_sec", f"{embed_baseline_min:.6f}"]
+                )
+                report_writer.writerow(
+                    ["cosmos_embed", "baseline_avg_sec", f"{embed_baseline_avg:.6f}"]
+                )
+                report_writer.writerow(
+                    ["cosmos_embed", "baseline_samples", embed_baseline_samples]
+                )
+                report_writer.writerow(
+                    ["cosmos_embed", "samples", len(embed_latencies)]
+                )
+                embed_avg = (
+                    (embed_avg - embed_baseline_avg)
+                    if not math.isnan(embed_avg) and not math.isnan(embed_baseline_avg)
+                    else float("nan")
+                )
+                milvus_avg = (
+                    (avg_lat - vs_baseline_avg - embed_avg)
+                    if (
+                        not math.isnan(avg_lat)
+                        and not math.isnan(vs_baseline_avg)
+                        and not math.isnan(embed_avg)
+                    )
+                    else float("nan")
+                )
+                report_writer.writerow(
+                    ["breakdown", "travel_avg_sec", f"{vs_baseline_avg:.6f}"]
+                )
+                report_writer.writerow(
+                    ["breakdown", "embed_avg_sec", f"{embed_avg:.6f}"]
+                )
+                report_writer.writerow(
+                    [
+                        "breakdown",
+                        "milvus_search_avg_sec",
+                        f"{max(0.0, milvus_avg):.6f}",
+                    ]
+                )
 
             # Histogram of queries
             query_to_lats: Dict[str, List[float]] = defaultdict(list)
             for qtext, l in per_request:
                 query_to_lats[qtext].append(l)
-            report_writer.writerow(["histogram", "query", "stats"])  # header for histogram section
+            report_writer.writerow(
+                ["histogram", "query", "stats"]
+            )  # header for histogram section
             for qtext, lst in query_to_lats.items():
                 cnt = len(lst)
                 qmin = min(lst)
                 qavg = sum(lst) / cnt
                 qmax = max(lst)
-                report_writer.writerow(["histogram", qtext, f"count={cnt};min={qmin:.6f};avg={qavg:.6f};max={qmax:.6f}"])
+                report_writer.writerow(
+                    [
+                        "histogram",
+                        qtext,
+                        f"count={cnt};min={qmin:.6f};avg={qavg:.6f};max={qmax:.6f}",
+                    ]
+                )
 
             report_writer.writerow([])
             detail_writer = csv.writer(f)
@@ -679,13 +762,17 @@ def latency_test(
     print(f"  Users: {users}")
     print(f"  Pattern: {pattern}")
     print(f"  collection: {collection_id}")
-    print(f"  collection items: {collection_items if 'collection_items' in locals() and collection_items is not None else 'unknown'}")
+    print(
+        f"  collection items: {collection_items if 'collection_items' in locals() and collection_items is not None else 'unknown'}"
+    )
     print(f"  Duration (s): {duration_sec}")
     print(f"  Total searches: {successes}")
     print(f"  Min/Avg/Max latency (s): {min_lat:.3f}/{avg_lat:.3f}/{max_lat:.3f}")
     print(f"  Searches per second: {sps:.3f}")
     print(f"  VS baseline min/avg (s): {vs_baseline_min:.3f}/{vs_baseline_avg:.3f}")
-    print(f"  VS search-only min/avg (s): {vs_search_only_min:.3f}/{vs_search_only_avg:.3f}")
+    print(
+        f"  VS search-only min/avg (s): {vs_search_only_min:.3f}/{vs_search_only_avg:.3f}"
+    )
     # Histogram stdout
     query_to_lats: Dict[str, List[float]] = defaultdict(list)
     for qtext, l in per_request:
@@ -697,33 +784,39 @@ def latency_test(
         qavg = sum(lst) / cnt
         qmax = max(lst)
         print(f"  {qtext}: count={cnt}, min/avg/max={qmin:.3f}/{qavg:.3f}/{qmax:.3f}")
-    if nim_base_url:
-        if nim_latencies:
-            nim_min = min(nim_latencies)
-            nim_max = max(nim_latencies)
-            nim_avg = sum(nim_latencies) / len(nim_latencies)
+    if embed_base_url:
+        if embed_latencies:
+            embed_min = min(embed_latencies)
+            embed_max = max(embed_latencies)
+            embed_avg = sum(embed_latencies) / len(embed_latencies)
         else:
-            nim_min = nim_max = nim_avg = float("nan")
-        print(f"NIM Latency Report ({nim_baseline_samples} iterations)")
-        print(f"  Min/Avg/Max latency (s): {nim_min:.3f}/{nim_avg:.3f}/{nim_max:.3f}")
-        print(f"  NIM baseline min/avg (s): {nim_baseline_min:.3f}/{nim_baseline_avg:.3f}")
-        cosmos_embed_avg = (
-            (nim_avg - nim_baseline_avg)
-            if not math.isnan(nim_avg) and not math.isnan(nim_baseline_avg)
+            embed_min = embed_max = embed_avg = float("nan")
+        print(
+            f"Cosmos Embed service Latency Report ({embed_baseline_samples} iterations)"
+        )
+        print(
+            f"  Min/Avg/Max latency (s): {embed_min:.3f}/{embed_avg:.3f}/{embed_max:.3f}"
+        )
+        print(
+            f"  Cosmos Embed service baseline min/avg (s): {embed_baseline_min:.3f}/{embed_baseline_avg:.3f}"
+        )
+        embed_avg = (
+            (embed_avg - embed_baseline_avg)
+            if not math.isnan(embed_avg) and not math.isnan(embed_baseline_avg)
             else float("nan")
         )
         milvus_avg = (
-            (avg_lat - vs_baseline_avg - cosmos_embed_avg)
+            (avg_lat - vs_baseline_avg - embed_avg)
             if (
                 not math.isnan(avg_lat)
                 and not math.isnan(vs_baseline_avg)
-                and not math.isnan(cosmos_embed_avg)
+                and not math.isnan(embed_avg)
             )
             else float("nan")
         )
         print("Breakdown (approx)")
         print(f"  travel (avg s): {vs_baseline_avg:.3f}")
-        print(f"  cosmos-embed (avg s): {cosmos_embed_avg:.3f}")
+        print(f"  cosmos-embed (avg s): {embed_avg:.3f}")
         print(f"  milvus search (avg s): {max(0.0, milvus_avg):.3f}")
 
 
@@ -735,25 +828,64 @@ def parse_cli() -> argparse.Namespace:
     p.add_argument("--collection-id", required=True)
 
     # One-off mode
-    p.add_argument("--query", help="Text to search for; if omitted and --random-query, random text will be used")
-    p.add_argument("--random-query", action="store_true", help="Use a randomly generated query")
+    p.add_argument(
+        "--query",
+        help="Text to search for; if omitted and --random-query, random text will be used",
+    )
+    p.add_argument(
+        "--random-query", action="store_true", help="Use a randomly generated query"
+    )
     p.add_argument("--top-k", type=int, default=10)
     p.add_argument("--reconstruct", action="store_true")
-    p.add_argument("--search-params", default="{}", help='JSON dict for search_params, e.g. {"nprobe": 32}')
+    p.add_argument(
+        "--search-params",
+        default="{}",
+        help='JSON dict for search_params, e.g. {"nprobe": 32}',
+    )
     p.add_argument("--filters", default="{}", help="JSON dict for filters")
-    p.add_argument("--no-asset-url", action="store_true", help="Disable asset URL generation")
+    p.add_argument(
+        "--no-asset-url", action="store_true", help="Disable asset URL generation"
+    )
     p.add_argument("--verbose", action="store_true", help="Print request and response")
 
     # Latency test mode
     p.add_argument("--latency-test", action="store_true", help="Run latency test mode")
-    p.add_argument("--duration", type=int, default=30, help="Duration (seconds) for latency test")
-    p.add_argument("--users", type=int, default=1, help="Number of simulated users (processes)")
-    p.add_argument("--pattern", choices=["continuous", "stochastic"], default="continuous")
-    p.add_argument("--csv-out", default=None, help="Path to write per-query latencies CSV")
-    p.add_argument("--simple-iters", type=int, default=10, help="Iterations for simple endpoint latency sampling")
-    p.add_argument("--nim-base-url", default=None, help="Optional base URL of cosmos-embed NIM for direct latency tests")
-    p.add_argument("--nim-model", default="nvidia/cosmos-embed1", help="Model for NIM embeddings endpoint")
-    p.add_argument("--query-pool-size", type=int, default=0, help="Limit size of search query dictionary (0 means full pool)")
+    p.add_argument(
+        "--duration", type=int, default=30, help="Duration (seconds) for latency test"
+    )
+    p.add_argument(
+        "--users", type=int, default=1, help="Number of simulated users (processes)"
+    )
+    p.add_argument(
+        "--pattern", choices=["continuous", "stochastic"], default="continuous"
+    )
+    p.add_argument(
+        "--csv-out", default=None, help="Path to write per-query latencies CSV"
+    )
+    p.add_argument(
+        "--simple-iters",
+        type=int,
+        default=10,
+        help="Iterations for simple endpoint latency sampling",
+    )
+    p.add_argument(
+        "--cosmos-embed-base-url",
+        dest="embed_base_url",
+        default=None,
+        help="Optional Cosmos Embed service base URL for direct latency tests",
+    )
+    p.add_argument(
+        "--cosmos-embed-model",
+        dest="embed_model",
+        default="nvidia/cosmos-embed1",
+        help="Model for Cosmos Embed service embeddings endpoint",
+    )
+    p.add_argument(
+        "--query-pool-size",
+        type=int,
+        default=0,
+        help="Limit size of search query dictionary (0 means full pool)",
+    )
     return p.parse_args()
 
 
@@ -785,8 +917,8 @@ def main() -> None:
             search_params=search_params,
             filters=filters,
             generate_asset_url=generate_asset_url,
-            nim_base_url=args.nim_base_url,
-            nim_model=args.nim_model,
+            embed_base_url=args.embed_base_url,
+            embed_model=args.embed_model,
             simple_iters=args.simple_iters,
             query_pool_size=args.query_pool_size,
         )
@@ -807,5 +939,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-

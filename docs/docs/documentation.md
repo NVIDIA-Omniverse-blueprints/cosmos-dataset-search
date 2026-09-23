@@ -5,6 +5,8 @@ Welcome to the NVIDIA Cosmos Dataset Search (CDS) documentation. This page provi
 ## Overview
 
 - **[Introduction](introduction.md)** - Overview of CDS architecture and capabilities
+- **[Runtime Architecture](architecture.md)** - CDS, CE1, storage and deployment boundaries
+- **[1.2.0 Container Images](release-containers.md)** - Published NGC tags and digests
 
 ## Quick Start Deployment
 
@@ -20,7 +22,7 @@ Recommended for local development, testing, and evaluation:
 
 ### Kubernetes Deployment
 
-Production-ready deployment options:
+Deployment templates to configure and harden for your environment:
 
 - **[AWS EKS Quickstart Deployment Guide](aws-eks-deployment.md)** - Deploy on Amazon EKS
 
@@ -30,8 +32,7 @@ Learn how to interact with CDS after deployment:
 
 ### Quick Start Guides
 
-- **[CDS User Guide](user-guide.md)** - Choose your interface (UI, CLI, or REST API)
-  - **[Web UI User Guide](ui-user-guide.md)** - Interactive visual interface tutorial
+- **[CDS User Guide](user-guide.md)** - Choose the CLI or REST API
   - **[CLI User Guide](cli-user-guide.md)** - Command-line interface tutorial
   - **[REST API User Guide](api-user-guide.md)** - REST API hands-on tutorial
 
@@ -48,7 +49,7 @@ Customize and optimize your CDS deployment:
 
 - **[REST API Reference](../guides/api.md)** - Complete API endpoint documentation
 - **[OpenAPI Specification](api_reference.md)** - API schema and specification
-- **[OpenAPI Schema (JSON)](../api_reference/openapi_schema_cvds.json)** - Machine-readable specification
+- **[Live OpenAPI Schema](api_reference.md#live-openapi-schema)** - Schema served by the deployed release
 
 ### Performance and Evaluation
 
@@ -57,6 +58,8 @@ Customize and optimize your CDS deployment:
 ### Security
 
 - **[Security Policy](../../SECURITY.md)** - Security guidelines and reporting
+- **[Ingestion Source Settings](import-url-security.md)** - Supported URLs, private storage and custom S3 endpoints
+- **[Import URL Security](import-url-security.md)** - Text and S3 Parquet destination configuration
 
 ## Troubleshooting
 

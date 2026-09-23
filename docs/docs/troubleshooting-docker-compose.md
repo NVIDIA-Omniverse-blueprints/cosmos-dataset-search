@@ -26,7 +26,7 @@ make test-integration-logs
 
 # View specific service logs
 docker compose -f deploy/standalone/docker-compose.build.yml logs visual-search
-docker compose -f deploy/standalone/docker-compose.build.yml logs cosmos-embed-nim
+docker compose -f deploy/standalone/docker-compose.build.yml logs cosmos-embed
 docker compose -f deploy/standalone/docker-compose.build.yml logs milvus
 
 # Follow logs in real-time
@@ -185,51 +185,11 @@ sudo systemctl restart docker
 docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
 ```
 
-### Cosmos-Embed Issues
-
-#### Video Embedding Requests Fail with HTTP 500
-
-If video requests fail with `Permission denied: '/tmp/ram/...'` in the Triton log while text requests work, ensure the `cosmos-embed` tmpfs mount in `deploy/standalone/docker-compose.build.yml` has writteable permissions, such as `- /tmp/ram:size=2g,mode=1777`. Edits to the `docker-compose.build.yaml` require recreating the container, `docker compose -f docker-compose.build.yml up -d --force-recreate cosmos-embed`.
-
 ### Network Issues
-
-#### Cannot Access Web UI
-
-**Problem**: Web UI loads but shows no pipelines, or UI cannot connect to backend API.
-
-**Solution:**
-
-If accessing the UI from a different machine than the deployment host (e.g., remote server):
-
-```bash
-# Edit .env file and set CDS_URL to the deployment host's IP or hostname
-nano deploy/standalone/.env
-
-# Add or update:
-CDS_URL=http://<deployment-host-ip>:8888
-
-# Example for server with IP 192.168.1.100:
-CDS_URL=http://192.168.1.100:8888
-
-# Re-validate and restart services
-bash deploy/standalone/scripts/validate_env.sh
-make test-integration-down
-make test-integration-up
-```
-
-**For local access only** (browser on same host as deployment):
-- Ensure `CDS_URL` is not set or is set to `http://localhost:8888`
-- Access UI at `http://localhost:8080/cosmos-dataset-search`
-
-**Verify the fix:**
-```bash
-# The UI should now display available pipelines
-# Navigate to http://<host-ip>:8080/cosmos-dataset-search
-```
 
 #### Services Cannot Communicate
 
-**Problem**: Services cannot communicate with each other (e.g., Visual Search cannot reach Milvus or Cosmos-embed NIM).
+**Problem**: Services cannot communicate with each other (e.g., Visual Search cannot reach Milvus or CE1 OSS service).
 
 **Solution:**
 ```bash
@@ -289,27 +249,24 @@ make test-integration-up
 
 ### Model Loading Issues
 
-#### Cosmos-embed NIM Model Download Failures
+#### CE1 OSS Model File Errors
 
-**Problem**: Cosmos-embed NIM container fails to download models or times out during startup.
+**Problem**: The CE1 OSS service reports missing, incomplete, or unreadable model files during startup.
 
 **Solution:**
 ```bash
-# Verify NGC authentication
-docker login nvcr.io
-
-# Check NIM cache directory exists with correct permissions
-ls -la ~/.cache/nim
-chmod 777 ~/.cache/nim
+# Check the configured local model directory
+ls -la "${COSMOS_EMBED_MODEL_HOST_PATH:-$HOME/.cache/cosmos-embed1}"
+chmod -R a+rX "${COSMOS_EMBED_MODEL_HOST_PATH:-$HOME/.cache/cosmos-embed1}"
 
 # Check available disk space (models are ~20GB)
 df -h ~/.cache
 
-# Monitor NIM container logs to see download progress
-docker compose -f deploy/standalone/docker-compose.build.yml logs -f cosmos-embed-nim
+# Inspect model validation and service logs
+docker compose -f deploy/standalone/docker-compose.build.yml logs validate-env
+docker compose -f deploy/standalone/docker-compose.build.yml logs -f cosmos-embed
 
-# If download fails, remove cache and retry
-rm -rf ~/.cache/nim/*
+# After repairing or re-downloading the model snapshot, recreate the service
 make test-integration-down
 make test-integration-up
 ```
@@ -385,7 +342,7 @@ make test-integration-logs
 docker compose -f deploy/standalone/docker-compose.build.yml logs -f --timestamps visual-search
 
 # View last 100 lines of logs
-docker compose -f deploy/standalone/docker-compose.build.yml logs --tail=100 cosmos-embed-nim
+docker compose -f deploy/standalone/docker-compose.build.yml logs --tail=100 cosmos-embed
 ```
 
 ### Inspecting Container State
@@ -394,7 +351,7 @@ Check container configuration and state:
 
 ```bash
 # Inspect container details
-docker inspect cosmos-embed-nim
+docker inspect cosmos-embed
 
 # Check container resource usage
 docker stats

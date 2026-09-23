@@ -12,6 +12,14 @@ CVDS uses boto3 for S3 operations, providing native compatibility with MinIO. Si
 - MinIO server accessible from CVDS
 - MinIO credentials (access key and secret key)
 
+## CDS 1.2.0 security configuration
+
+Use credentials and an endpoint appropriate to your deployment; the example `minioadmin` credentials below are for isolated local evaluation only. A service in a pod/container cannot reach a separate MinIO service through its own `localhost`. Configure a hostname reachable from CDS, CE1 and Milvus. If CE1 Compose already uses host port 9000, use a different host port for MinIO.
+
+For private/HTTP media endpoints, configure CE1's explicit endpoint/origin opt-in. CDS text/Parquet imports use a separate [URL and S3 endpoint policy](../docs/import-url-security.md). Configure both policies when both paths are used; do not disable validation to make a private endpoint work.
+
+For Kubernetes, add the created storage Secret name to `secretAccess.allowedNames` in the visual-search Helm values and apply the values before ingestion. The application has `get` access only to configured names, not namespace-wide Secret access. See [storage Secret access](../docs/aws-eks-deployment.md#storage-secret-access).
+
 ## MinIO Setup
 
 ### 1. Pull the Docker Image
@@ -38,7 +46,7 @@ docker run -d --name minio-fileserver \
 
 **Parameters explained:**
 - `-p 9000:9000`: Maps the MinIO API port
-- `-p 9001:9001`: Maps the MinIO Console port  
+- `-p 9001:9001`: Maps the MinIO Console port
 - `-e "MINIO_ROOT_USER=minioadmin"`: Sets the access username
 - `-e "MINIO_ROOT_PASSWORD=minioadmin"`: Sets the access password
 - `-v /mnt/data:/data`: Creates a persistent volume (change `/mnt/data` to your preferred local directory)

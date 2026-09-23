@@ -1,15 +1,22 @@
 #!/bin/bash
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 function delete_vpc() {
+  : "${CLUSTER_NAME:?CLUSTER_NAME must identify the cluster being removed}"
+  : "${AWS_REGION:?AWS_REGION must identify the cluster region}"
   ###################### Delete VPC ######################
   VPC_NAME="eksctl-${CLUSTER_NAME}-cluster/VPC"
 
@@ -57,15 +64,17 @@ function delete_vpc() {
     done
   fi
 
-  echo "Releasing any unattached EIPs..."
+  echo "Releasing unattached EIPs owned by cluster $CLUSTER_NAME..."
   EIP_IDS=$(aws ec2 describe-addresses \
+    --region "$AWS_REGION" \
+    --filters "Name=tag:aws:cloudformation:stack-name,Values=eksctl-${CLUSTER_NAME}-cluster" \
     --query "Addresses[?AssociationId==null].AllocationId" \
     --output text || true)
 
   if [ -n "$EIP_IDS" ] && [ "$EIP_IDS" != "None" ]; then
     for eip in $EIP_IDS; do
       echo "Releasing unattached EIP: $eip"
-      aws ec2 release-address --allocation-id "$eip" || true
+      aws ec2 release-address --region "$AWS_REGION" --allocation-id "$eip" || true
     done
   else
     echo "No unattached EIPs to release."

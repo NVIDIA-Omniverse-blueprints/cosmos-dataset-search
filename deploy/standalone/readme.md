@@ -8,10 +8,9 @@ This directory contains the standalone deployment configuration and scripts for 
 - [Configuration](#configuration)
 - [Running the Service](#running-the-service)
 - [Accessing the Service](#accessing-the-service)
-  - [Accessing the Service via react UI](#accessing-the-service-via-react-ui)
   - [Accessing the Service via Command Line Using CURL and REST API](#accessing-the-service-via-command-line-using-curl-and-rest-api)
-  - [Accessing the Service via vius client](#accessing-the-service-via-vius-client)
-    - [Install vius client](#install-vius-client)
+  - [Accessing the Service via CDS client](#accessing-the-service-via-cds-client)
+    - [Install CDS client](#install-cds-client)
 - [Ingesting Data](#ingesting-data)
   - [Local Ingestion](#local-ingestion)
   - [Remote Ingestion from an AWS s3 Bucket](#remote-ingestion-from-an-aws-s3-bucket)
@@ -52,10 +51,8 @@ The standalone deployment package provides everything needed to run the Visual S
 
 2. Modify the `.env` file to set the environment variables.
     * Make sure you have the correct docker images (change environment variables to match the image you want to use).
-    * Change `HOST_IP` variable to the host ip address of the machine where the visual-search service will be running. This must be an address that both host and client (browser) can reach, not localhost or a service name.
+    * Change `HOST_IP` to the host IP address where the visual-search service will run. This must be reachable by API and CLI clients.
     * Change `NV_VIUS_NGC_KEY` to your NGC key.
-
-3. If needed, modify the `docker-compose.yaml` file to mount other files from the host system's local storage in order to debug or develop. See example of mounting on the `visual-search-react-ui` service.
 
 ## Running the Service
 
@@ -74,18 +71,13 @@ The standalone deployment package provides everything needed to run the Visual S
     visual-search           | [INFO] Application startup complete.
     ```
 
-> **Note**: The `cosmos-embed` service mounts its temp directory to `/tmp/ram:size=2g,mode=1777`. Without `mode=1777` the NIM, running as non-root, cannot write temp video files and all video embedding requests fail with `Permission denied` / HTTP 500.
-
 ## Accessing the Service
 
-You can access the visual search service three ways: via **vius client**, via **react UI**, via command line using **CURL** and REST API.
+You can access the visual search service through the **CDS client** or through
+command-line **CURL** requests to the REST API.
 
-Note that to modify the collections and ingest data you must use the vius client.
-
-### Accessing the Service via react UI
-You can access the service UI using a web browser at `http://<host_ip>:8080/` . For collections containing the result of local ingestions, search results will not display thumbnails. Thumbnails and playback/display are only supported for ingestions made from an AWS s3 bucket.
-
-You can access visual-search API at `http://<host_ip>:8888/v1/docs` .
+Use the CDS client to modify collections and ingest data. API documentation is
+available at `http://<host_ip>:8888/v1/docs`.
 
 ### Accessing the Service via Command Line Using CURL and REST API
 
@@ -101,7 +93,10 @@ curl -X 'GET' \
 
 The CDS client is a Python application that allows you to manage the collections and ingest data to the service.
 
-Searching with the CDS client uses the `retrieval` API. The `search` API (as used by the react UI), is currently supported only through CURL commands. See [Accessing the Service via Command Line Using CURL and REST API](#accessing-the-service-via-command-line-using-curl-and-rest-api) for more information.
+Searching with the CDS client uses the `retrieval` API. The `search` API is
+available through CURL commands. See [Accessing the Service via Command Line
+Using CURL and REST API](#accessing-the-service-via-command-line-using-curl-and-rest-api)
+for more information.
 
 #### Install CDS client
 

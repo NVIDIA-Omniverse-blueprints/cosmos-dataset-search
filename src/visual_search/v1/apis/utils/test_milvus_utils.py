@@ -1,17 +1,22 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+# SPDX-License-Identifier: Apache-2.0
 #
-# NVIDIA CORPORATION, its affiliates and licensors retain all intellectual
-# property and proprietary rights in and to this material, related
-# documentation and any modifications thereto. Any use, reproduction,
-# disclosure or distribution of this material and related documentation
-# without an express license agreement from NVIDIA CORPORATION or
-# its affiliates is strictly prohibited.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
 # pylint: disable=import-error,missing-module-docstring,invalid-name,line-too-long
 import sys
 import types
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pyarrow as pa
 import pytest  # type: ignore
@@ -37,16 +42,6 @@ class _StubParquetFile:
     def read_row_groups(self, *_a, columns=None, **_k):
         return self._batch(columns)
 
-
-# fsspec -----------------------------------------------------------------------
-if "fsspec" not in sys.modules:
-    fsspec_stub = types.ModuleType("fsspec")
-
-    def _unimplemented_open(*_args, **_kwargs):  # pragma: no cover
-        raise RuntimeError("fsspec.open was not patched in the test")
-
-    fsspec_stub.open = _unimplemented_open  # type: ignore[attr-defined]
-    sys.modules["fsspec"] = fsspec_stub
 
 # pyarrow & pyarrow.parquet -----------------------------------------------------
 if "pyarrow" not in sys.modules:
@@ -148,8 +143,8 @@ class DummyParquetSchema:
         self.names = names
 
 
-class DummyFsspecCtx:
-    """Context manager returned by patched fsspec.open"""
+class DummyS3ImportCtx:
+    """Context manager returned by patched open_s3_import."""
 
     def __enter__(self):  # noqa: D401
         return object()
@@ -280,7 +275,7 @@ async def test_validate_parquet_schema_success():
     with (
         patch.object(utils, "ensure_milvus_connection"),
         patch.object(utils, "Collection", DummyCollection),
-        patch.object(utils.fsspec, "open", return_value=DummyFsspecCtx()),
+        patch.object(utils, "open_s3_import", return_value=DummyS3ImportCtx()) as mock_open,
         patch.object(
             utils.pq,
             "read_schema",
@@ -290,13 +285,18 @@ async def test_validate_parquet_schema_success():
     ):
         # Should not raise
         await utils.validate_parquet_schema("s3://bucket/file.parquet", "collection")
+        # Both schema and embedding-dimension reads must use the guarded opener.
+        assert mock_open.call_args_list == [
+            call("s3://bucket/file.parquet", {}),
+            call("s3://bucket/file.parquet", {}),
+        ]
 
 
 @pytest.mark.asyncio
 async def test_validate_parquet_schema_missing_fields():
     with patch.object(utils, "ensure_milvus_connection"), patch.object(
         utils, "Collection", DummyCollection
-    ), patch.object(utils.fsspec, "open", return_value=DummyFsspecCtx()), patch.object(
+    ), patch.object(utils, "open_s3_import", return_value=DummyS3ImportCtx()), patch.object(
         utils.pq, "read_schema", return_value=DummyParquetSchema(["id"])
     ):
         with pytest.raises(utils.MilvusServiceError):
@@ -309,7 +309,7 @@ async def test_validate_parquet_schema_missing_fields():
 async def test_validate_parquet_schema_file_not_found():
     with patch.object(utils, "ensure_milvus_connection"), patch.object(
         utils, "Collection", DummyCollection
-    ), patch.object(utils.fsspec, "open", side_effect=FileNotFoundError):
+    ), patch.object(utils, "open_s3_import", side_effect=FileNotFoundError):
         with pytest.raises(FileNotFoundError):
             await utils.validate_parquet_schema(
                 "s3://bucket/missing.parquet", "collection"
@@ -334,7 +334,7 @@ async def test_validate_parquet_schema_embedding_dim_match():
         patch.object(
             utils, "Collection", lambda *a, **k: DummyCollection(*a, **k, dim=3)
         ),
-        patch.object(utils.fsspec, "open", return_value=DummyFsspecCtx()),
+        patch.object(utils, "open_s3_import", return_value=DummyS3ImportCtx()),
         patch.object(
             utils.pq, "read_schema", return_value=DummyParquetSchema(["id", "vector"])
         ),
@@ -355,7 +355,7 @@ async def test_validate_parquet_schema_embedding_dim_mismatch():
 
     with patch.object(utils, "ensure_milvus_connection"), patch.object(
         utils, "Collection", lambda *a, **k: DummyCollection(*a, **k, dim=4)
-    ), patch.object(utils.fsspec, "open", return_value=DummyFsspecCtx()), patch.object(
+    ), patch.object(utils, "open_s3_import", return_value=DummyS3ImportCtx()), patch.object(
         utils.pq, "read_schema", return_value=DummyParquetSchema(["id", "vector"])
     ), patch.object(
         utils.pq, "ParquetFile", PFMis
