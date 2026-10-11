@@ -76,8 +76,8 @@ dependencies = [
     # Milvus Lite 2.5.1 needs pkg_resources, removed in setuptools 82.
     # The CVE-2026-59890 fix in 83 is deferred pending a compatible Lite update.
     "setuptools==81.0.0",
-    "torch==2.14.0+cu126",
-    "torchvision==0.29.0+cu126",
+    "torch==2.14.0+cu130",
+    "torchvision==0.29.0+cu130",
     "tqdm==4.67.1",
     "tritonclient[http]==2.71.0",
     "typing-extensions==4.15.0",
@@ -93,7 +93,7 @@ dependencies = [
 [project.optional-dependencies]
 # GPU media decoding belongs to CE1, not the CDS ingestion/search client.
 gpu-media = [
-    "cvcuda-cu12==0.17.0",
+    "cvcuda-cu13==0.17.0",
     "nvidia-nvimgcodec-cu12[nvjpeg]==0.9.0.20",
     "pynvvideocodec==2.2.3",
 ]
@@ -248,10 +248,10 @@ constraint-dependencies = [
 
 # Explicitly mark PyTorch packages to use the PyTorch index
 [tool.uv.sources]
-torch = { index = "pytorch-cu126" }
-torchvision = { index = "pytorch-cu126" }
+torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
 
 [[tool.uv.index]]
-name = "pytorch-cu126"
-url = "https://download.pytorch.org/whl/cu126"
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true  # Only use this index for explicitly marked packages

@@ -37,7 +37,7 @@ CDS requires an NVIDIA GPU for running the CE1 OSS service. Supported GPUs:
 
 **CE1 OSS Service Requirements:**
 - GPU Memory: Minimum 16GB; 24GB+ recommended for optimal performance
-- CUDA: Compatible with CUDA 11.8+ runtime
+- CUDA: the Cosmos-Embed1 image bundles a CUDA 13.0 runtime (PyTorch and CV-CUDA), which runs on Hopper, Ada, Ampere and Blackwell (B200) GPUs
 - Model files: Public `nvidia/Cosmos-Embed1-224p` snapshot downloaded to a local directory before startup
 
 ### Software Requirements
@@ -58,7 +58,7 @@ CDS has been tested on the following operating systems:
 | [Python](https://www.python.org/)                              | 3.10        | Development and CLI tools        |
 | [Git LFS](https://git-lfs.com/)                                | 3.0+        | Model weights and large files    |
 | [UV](https://github.com/astral-sh/uv)                          | 0.8.17+     | Python dependency management     |
-| [NVIDIA Drivers](https://www.nvidia.com/download/index.aspx)   | 525+        | GPU driver (CUDA 11.8+ support)  |
+| [NVIDIA Drivers](https://www.nvidia.com/download/index.aspx)   | 580+        | GPU driver (CUDA 13.0 support)   |
 
 #### Required Access
 
