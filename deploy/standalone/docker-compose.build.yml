@@ -50,9 +50,9 @@ services:
       - NVIDIA_API_KEY=${NVIDIA_API_KEY:-}
       - DATA_DIR=${DATA_DIR:-}
       - DATA_DIR_VALIDATION_PATH=/validation/data
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-test}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-test}
-      - AWS_ENDPOINT_URL=${AWS_ENDPOINT_URL:-http://localstack:4566}
+      - AWS_ACCESS_KEY_ID=${VAST_ACCESS_KEY:-${AWS_ACCESS_KEY_ID:-}}
+      - AWS_SECRET_ACCESS_KEY=${VAST_SECRET_KEY:-${AWS_SECRET_ACCESS_KEY:-}}
+      - AWS_ENDPOINT_URL=${VAST_S3_ENDPOINT:-${AWS_ENDPOINT_URL:-}}
       - GUNICORN_PORT=${GUNICORN_PORT:-8888}
       - GUNICORN_WORKERS=${GUNICORN_WORKERS:-2}
       - GUNICORN_TIMEOUT=${GUNICORN_TIMEOUT:-600}
@@ -76,82 +76,13 @@ services:
       - HUGGINGFACE_HUB_CACHE=${HUGGINGFACE_HUB_CACHE:-}
       - HF_TOKEN=${HF_TOKEN:-}
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
-      - MILVUS_CUDA_VISIBLE_DEVICES=${MILVUS_CUDA_VISIBLE_DEVICES:-0}
-      - COSMOS_EMBED_URI=${COSMOS_EMBED_URI:-http://cosmos-embed:8000}
+            - COSMOS_EMBED_URI=${COSMOS_EMBED_URI:-http://cosmos-embed:8000}
       - VISUAL_SEARCH_LOG_LEVEL=${VISUAL_SEARCH_LOG_LEVEL:-DEBUG}
-      - ALLOWED_PIPELINES=${ALLOWED_PIPELINES:-cosmos_video_search_milvus}
+      - ALLOWED_PIPELINES=${ALLOWED_PIPELINES:-cosmos_video_search_vastdb}
 
   # ================================================
   # Infrastructure Services
   # ================================================
-  etcd:
-    container_name: milvus-etcd
-    image: quay.io/coreos/etcd:v3.5.5
-    environment:
-      - ETCD_AUTO_COMPACTION_MODE=revision
-      - ETCD_AUTO_COMPACTION_RETENTION=1000
-      - ETCD_QUOTA_BACKEND_BYTES=4294967296
-      - ETCD_SNAPSHOT_COUNT=50000
-      - MINIO_ACCESS_KEY_ID=${MINIO_ACCESS_KEY_ID:-test}
-      - MINIO_SECRET_ACCESS_KEY=${MINIO_SECRET_ACCESS_KEY:-test}
-    volumes:
-      - etcd_data:/etcd
-    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
-    healthcheck:
-      test: ["CMD", "etcdctl", "endpoint", "health"]
-      interval: 30s
-      timeout: 20s
-      retries: 3
-    networks:
-      - cvds
-    depends_on:
-      validate-env:
-        condition: service_completed_successfully
-
-  milvus:
-    container_name: milvus
-    image: milvusdb/milvus:v2.4.4-gpu
-    command: ["milvus", "run", "standalone"]
-    runtime: nvidia
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ["0"]
-              capabilities: [gpu]
-    security_opt:
-    - seccomp:unconfined
-    environment:
-      - ETCD_ENDPOINTS=etcd:2379
-      - MINIO_ACCESS_KEY_ID=${MINIO_ACCESS_KEY_ID:-test}
-      - MINIO_SECRET_ACCESS_KEY=${MINIO_SECRET_ACCESS_KEY:-test}
-      # GPU Memory Management for CAGRA
-      - CUDA_VISIBLE_DEVICES=${MILVUS_CUDA_VISIBLE_DEVICES:-0}
-    volumes:
-      - milvus_data:/var/lib/milvus
-      - ./milvus_localstack.yaml:/milvus/configs/milvus.yaml
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
-      interval: 30s
-      start_period: 90s
-      timeout: 20s
-      retries: 3
-    ports:
-      - "19530:19530"
-      - "9091:9091"
-    depends_on:
-      etcd:
-        condition: service_healthy
-      localstack:
-        condition: service_healthy
-      # Ensure cosmos-embed starts first to claim GPU memory before Milvus
-      # This prevents GPU memory allocation race conditions that cause
-      cosmos-embed:
-        condition: service_healthy
-    networks:
-      - cvds
-
   cosmos-embed-cache-init:
     image: ${COSMOS_EMBED_IMAGE:-cvds-cosmos-embed-oss-pytorch:local}
     user: root
@@ -221,7 +152,7 @@ services:
       - COSMOS_EMBED_MAX_MEDIA_BYTES=${COSMOS_EMBED_MAX_MEDIA_BYTES:-100663296}
       - COSMOS_EMBED_TMP_DIR=${COSMOS_EMBED_TMP_DIR:-/tmp/ram}
       - COSMOS_EMBED_MEDIA_DOWNLOAD_TIMEOUT_SECONDS=${COSMOS_EMBED_MEDIA_DOWNLOAD_TIMEOUT_SECONDS:-300}
-      - COSMOS_EMBED_PRESIGNED_URL_ENDPOINT_URL=${COSMOS_EMBED_PRESIGNED_URL_ENDPOINT_URL:-http://localstack:4566}
+      - COSMOS_EMBED_PRESIGNED_URL_ENDPOINT_URL=${COSMOS_EMBED_PRESIGNED_URL_ENDPOINT_URL:-${VAST_S3_ENDPOINT}}
       - COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HOSTS=${COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HOSTS:-}
       - COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HTTP_ORIGINS=${COSMOS_EMBED_PRESIGNED_URL_ALLOWED_HTTP_ORIGINS:-}
       - COSMOS_EMBED_SERVICE_VERSION=${COSMOS_EMBED_SERVICE_VERSION:-1.2.0}
@@ -264,71 +195,47 @@ services:
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
       GUNICORN_TIMEOUT: ${GUNICORN_TIMEOUT:-600}
       MAX_DOCS_PER_UPLOAD: ${MAX_DOCS_PER_UPLOAD:-100}
-      MILVUS_DOCUMENT_STORE_URI: ${MILVUS_DOCUMENT_STORE_URI:-http://milvus:19530}
-      MILVUS_DB: ${MILVUS_DB:-}
       COSMOS_EMBED_URI: ${COSMOS_EMBED_URI:-http://cosmos-embed:8000}
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
-      ALLOWED_PIPELINES: ${ALLOWED_PIPELINES:-cosmos_video_search_milvus}
+      ALLOWED_PIPELINES: ${ALLOWED_PIPELINES:-cosmos_video_search_vastdb}
       VISUAL_SEARCH_LOG_LEVEL: ${VISUAL_SEARCH_LOG_LEVEL:-DEBUG}
-      # LocalStack S3 configuration for bulk indexing
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-test}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-test}
-      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
-      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-http://localstack:4566}
-      # Outbound text/Parquet import policy, configured by the operator only.
+      # VastDB vector store
+      VASTDB_ENDPOINT: ${VASTDB_ENDPOINT}
+      VAST_ACCESS_KEY: ${VAST_ACCESS_KEY:-${AWS_ACCESS_KEY_ID}}
+      VAST_SECRET_KEY: ${VAST_SECRET_KEY:-${AWS_SECRET_ACCESS_KEY}}
+      VASTDB_BUCKET: ${VASTDB_BUCKET:-cds-vastdb}
+      VASTDB_SCHEMA: ${VASTDB_SCHEMA:-cds}
+      VASTDB_EMBEDDING_DIM: ${VASTDB_EMBEDDING_DIM:-256}
+      VASTDB_SSL_VERIFY: ${VASTDB_SSL_VERIFY:-false}
+      VAST_ADBC_DRIVER_PATH: ${VAST_ADBC_DRIVER_PATH:-/opt/adbc-driver/libadbc_driver_vastdb.so}
+      # Vast S3 for media
+      VAST_S3_ENDPOINT: ${VAST_S3_ENDPOINT:-${AWS_ENDPOINT_URL}}
+      AWS_ACCESS_KEY_ID: ${VAST_S3_ACCESS_KEY:-${VAST_ACCESS_KEY:-${AWS_ACCESS_KEY_ID}}}
+      AWS_SECRET_ACCESS_KEY: ${VAST_S3_SECRET_KEY:-${VAST_SECRET_KEY:-${AWS_SECRET_ACCESS_KEY}}}
+      AWS_DEFAULT_REGION: ${VAST_S3_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}
+      AWS_ENDPOINT_URL: ${VAST_S3_ENDPOINT:-${AWS_ENDPOINT_URL}}
       CDS_FETCH_ALLOWED_ORIGINS: ${CDS_FETCH_ALLOWED_ORIGINS:-}
-      CDS_FETCH_PRIVATE_ORIGINS: ${CDS_FETCH_PRIVATE_ORIGINS:-http://localstack:4566}
-      CDS_FETCH_S3_ENDPOINTS: ${CDS_FETCH_S3_ENDPOINTS:-http://localstack:4566}
+      CDS_FETCH_PRIVATE_ORIGINS: ${CDS_FETCH_PRIVATE_ORIGINS:-${VAST_S3_ENDPOINT}}
+      CDS_FETCH_S3_ENDPOINTS: ${CDS_FETCH_S3_ENDPOINTS:-${VAST_S3_ENDPOINT}}
       CDS_FETCH_MAX_TEXT_BYTES: ${CDS_FETCH_MAX_TEXT_BYTES:-16777216}
-      # Map localhost:4566 to localstack:4566 for Docker networking
-      LOCALSTACK_HOSTNAME: localstack
     ports:
       - "8888:8888"
     volumes:
       - ../../src/visual_search:/app/src/visual_search
       - ../../src/haystack:/app/src/haystack
       - ../../models:/app/models
+      - ${VAST_ADBC_DRIVER_HOST_PATH:-/opt/adbc-driver}:/opt/adbc-driver:ro
     depends_on:
-      milvus:
-        condition: service_healthy
       cosmos-embed:
         condition: service_healthy
     networks:
       - cvds
-
-  localstack:
-    image: localstack/localstack:4.7
-    container_name: localstack
-    ports:
-      - "4566:4566"
-    volumes:
-      - "${DATA_DIR}/:/data:ro"
-      - ./localstack/init:/etc/localstack/init/ready.d:ro
-    networks:
-      - cvds
-    environment:
-      - AWS_DEFAULT_REGION=us-east-1
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
-      - AWS_ENDPOINT_URL=http://localstack:4566
-      - EXTRA_CORS_ALLOWED_HEADERS=content-type,x-amz-date,authorization,x-api-key,x-amz-security-token,x-amz-user-agent
-      - BUCKET_NAME=cosmos-test-bucket
-    healthcheck:
-      test: ["CMD-SHELL", "awslocal s3 ls >/dev/null 2>&1 || aws --endpoint-url=http://localhost:4566 s3 ls >/dev/null 2>&1"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-    depends_on:
-      validate-env:
-        condition: service_completed_successfully
 
 # ================================================
 # Volumes
 # ================================================
 
 volumes:
-  milvus_data:
-  etcd_data:
   ce1-oss-hf-cache:
 
 # ================================================

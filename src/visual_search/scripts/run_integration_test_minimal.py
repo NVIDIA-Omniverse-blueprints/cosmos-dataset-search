@@ -33,7 +33,7 @@ class MinimalTestCases:
 
     def run(self) -> None:
         """Run minimal tests."""
-        pipeline = "cosmos_video_search_milvus"
+        pipeline = "cosmos_video_search_vastdb"
         collection_name = "Test Collection"
 
         collection_id = None

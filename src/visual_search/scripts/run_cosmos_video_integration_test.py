@@ -27,16 +27,16 @@ from src.visual_search.client.config import DEFAULT  # we will override with "lo
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Ensure boto3 inside Ray workers uses LocalStack
+# Ensure boto3 inside Ray workers uses Vast S3
 os.environ.setdefault("AWS_ACCESS_KEY_ID", "test")
 os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "test")
 os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")
-os.environ.setdefault("AWS_ENDPOINT_URL", "http://localstack:4566")
+os.environ.setdefault("AWS_ENDPOINT_URL", "http://vast-s3:4566")
 
 SAMPLE_VIDEO_DIR = Path(__file__).parent / "sample_data"
 SAMPLE_VIDEO_FILE = SAMPLE_VIDEO_DIR / "video1.mp4"
 
-PIPELINE_ID = "cosmos_video_search_milvus"
+PIPELINE_ID = "cosmos_video_search_vastdb"
 COLLECTION_NAME = "Cosmos Video Integration Test"
 
 INGEST_TIMEOUT_S = 300
@@ -86,8 +86,8 @@ def main() -> None:
         collection_id = col_resp["collection"]["id"]
         logging.info("Collection ID: %s", collection_id)
 
-        logging.info("Ensuring sample video is present in LocalStack S3")
-        s3_endpoint = os.environ.get("AWS_ENDPOINT_URL", "http://localstack:4566")
+        logging.info("Ensuring sample video is present in Vast S3 S3")
+        s3_endpoint = os.environ.get("AWS_ENDPOINT_URL", "http://vast-s3:4566")
         s3 = boto3.client(
             "s3",
             endpoint_url=s3_endpoint,
@@ -132,7 +132,7 @@ def main() -> None:
         flush_resp.raise_for_status()
         logging.info("Flush successful: %s", flush_resp.json())
 
-        logging.info("Waiting for document to be indexed in Milvus")
+        logging.info("Waiting for document to be indexed in VastDB")
         _wait_for_document_count(client, collection_id, expected=1)
 
         logging.info("Running text search query")

@@ -26,12 +26,12 @@ curl -X GET http://localhost:8888/v1/pipelines \
 {
   "pipelines": [
     {
-      "id": "cosmos_video_search_milvus",
+      "id": "cosmos_video_search_vastdb",
       "enabled": true,
       "missing": [],
       "config": {
         "index": {
-          "description": "Video indexing and search pipeline using Milvus."
+          "description": "Video indexing and search pipeline using VastDB."
         }
       }
     }
@@ -41,7 +41,7 @@ curl -X GET http://localhost:8888/v1/pipelines \
 
 ### Visualize Pipeline
 ```bash
-curl -X GET http://localhost:8888/v1/pipelines/draw/cosmos_video_search_milvus \
+curl -X GET http://localhost:8888/v1/pipelines/draw/cosmos_video_search_vastdb \
   -H 'accept: application/json'
 ```
 
@@ -52,7 +52,7 @@ curl -X GET http://localhost:8888/v1/pipelines/draw/cosmos_video_search_milvus \
 curl -X POST http://localhost:8888/v1/collections \
   -H 'Content-Type: application/json' \
   -d '{
-    "pipeline": "cosmos_video_search_milvus",
+    "pipeline": "cosmos_video_search_vastdb",
     "name": "my_video_collection",
     "tags": {
       "storage-template": "s3://my-bucket/videos/{{filename}}"
@@ -70,7 +70,7 @@ curl -X GET http://localhost:8888/v1/collections
 {
   "collections": [
     {
-      "pipeline": "cosmos_video_search_milvus",
+      "pipeline": "cosmos_video_search_vastdb",
       "name": "MSR-VTT Collection Accuracy Test",
       "tags": {
         "default_index": "GPU_CAGRA"
@@ -106,7 +106,7 @@ curl -X DELETE http://localhost:8888/v1/collections/{collection_id}
 
 ### Get Pipeline Collections
 ```bash
-curl -X GET http://localhost:8888/v1/pipelines/cosmos_video_search_milvus/collections
+curl -X GET http://localhost:8888/v1/pipelines/cosmos_video_search_vastdb/collections
 ```
 
 ## Document Indexing
@@ -142,7 +142,7 @@ curl -X DELETE http://localhost:8888/v1/collections/{collection_id}/documents/{d
 
 ### Bulk Insert Data (Parquet Files)
 
-> **⚠️ Important**: Parquet files must be accessible to the Milvus instance. They need to be stored in the same S3 bucket or LocalStack instance that Milvus is configured to use (as defined in your Milvus configuration YAML). The Milvus service must have read access to these files for bulk insertion to work.
+> **⚠️ Important**: Parquet files must be accessible to the VastDB instance. They need to be stored in the same S3 bucket or Vast S3 instance that VastDB is configured to use (as defined in your VastDB configuration YAML). The VastDB service must have read access to these files for bulk insertion to work.
 
 ```bash
 curl -X POST http://localhost:8888/v1/insert-data \
@@ -154,14 +154,14 @@ curl -X POST http://localhost:8888/v1/insert-data \
     ],
     "access_key": "test",
     "secret_key": "test",
-    "endpoint_url": "http://localstack:4566"
+    "endpoint_url": "http://vast-s3:4566"
   }'
 ```
 
 **Storage Requirements:**
-- Files must be in S3 bucket or LocalStack accessible to Milvus
-- Use the same storage endpoint/credentials as configured in Milvus
-- For the Compose deployment: `http://localstack:4566` with bucket `cosmos-test-bucket`. The import request uses the service-visible endpoint, not the host's `localhost` address.
+- Files must be in S3 bucket or Vast S3 accessible to VastDB
+- Use the same storage endpoint/credentials as configured in VastDB
+- For the Compose deployment: `http://vast-s3:4566` with bucket `cosmos-test-bucket`. The import request uses the service-visible endpoint, not the host's `localhost` address.
 - For production: your configured S3 bucket with proper IAM permissions
 
 ### Check Job Status
@@ -423,10 +423,10 @@ curl -X GET ${API_BASE_URL}/collections
    curl -X GET http://localhost:8888/v1/pipelines
    ```
 
-4. **Bulk Insert Failures**: Ensure parquet files are in Milvus-accessible storage
-   - Check Milvus configuration for storage settings
-   - For Compose: use LocalStack bucket `cosmos-test-bucket` at the service-visible endpoint `http://localstack:4566`
-   - For production: verify file paths use correct S3 bucket and Milvus has read permissions
+4. **Bulk Insert Failures**: Ensure parquet files are in VastDB-accessible storage
+   - Check VastDB configuration for storage settings
+   - For Compose: use Vast S3 bucket `cosmos-test-bucket` at the service-visible endpoint `http://vast-s3:4566`
+   - For production: verify file paths use correct S3 bucket and VastDB has read permissions
 
 ### Debug Mode
 Add `-v` flag to curl for verbose output:

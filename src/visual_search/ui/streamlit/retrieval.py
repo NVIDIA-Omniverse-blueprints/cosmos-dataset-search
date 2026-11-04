@@ -514,7 +514,7 @@ def app(media_key: str, endpoint: str) -> None:
                 )
                 filters = st.text_input(
                     "Pre-filters",
-                    help="EBNF grammar (see https://milvus.io/docs/boolean.md)",
+                    help="EBNF grammar (see https://vastdb.io/docs/boolean.md)",
                 )
                 reconstruct = st.checkbox("Reconstruct", value=False)
 

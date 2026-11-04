@@ -13,12 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Design a StorageBase base class that defines an interface for writing a tuple a numpy float array of embeddings and a metadata dictionary into a parquet tabular file.
-The StorageBase class caches each row or rows as they are fed into it, and writes a new file when each file is written when its size is greater than 1GB.
-
-This base class is a haystack component that integrates with a haystack pipeline.
-"""
+"""Haystack storage client that posts Arrow batches to an external writer."""
 
 import json
 import logging
@@ -29,7 +24,7 @@ import pyarrow as pa
 import requests  # type: ignore
 from haystack import Document, component, default_from_dict, default_to_dict
 
-from src.haystack.components.milvus.document_store import MilvusDocumentStore
+from src.haystack.components.vastdb.document_store import VastDocumentStore
 from src.visual_search.common.models import IngestRequest
 
 logger = logging.getLogger(__name__)
@@ -38,7 +33,7 @@ logger = logging.getLogger(__name__)
 @component
 class StorageClient:
     def __init__(
-        self, storage_server_url: str, document_store: MilvusDocumentStore
+        self, storage_server_url: str, document_store: VastDocumentStore
     ) -> None:
         self.storage_server_url = storage_server_url
         self.document_store = document_store
@@ -53,9 +48,7 @@ class StorageClient:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "StorageClient":
         init_parameters = data["init_parameters"]
-        document_store = MilvusDocumentStore.from_dict(
-            init_parameters["document_store"]
-        )
+        document_store = VastDocumentStore.from_dict(init_parameters["document_store"])
         return default_from_dict(
             cls,
             {
@@ -94,7 +87,6 @@ class StorageClient:
 
         buffer.seek(0)
 
-        # create_safe_name appends 'a' letter to the UUID and changes '-' to '_'
         collection_name = index_name.replace("_", "-")[1:]
 
         response = requests.post(

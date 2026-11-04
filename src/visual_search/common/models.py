@@ -27,7 +27,7 @@ from fastapi import HTTPException, Path
 from pydantic import BaseModel, Field, HttpUrl, constr, root_validator, validator
 from typing_extensions import TypeAlias
 
-from src.haystack.components.milvus.schema_utils import MetadataConfig
+from src.haystack.components.schema_utils import MetadataConfig
 from src.visual_search.exceptions import InputValidationError
 
 # backward compatibility with PyDantic 1.x
@@ -119,7 +119,7 @@ class CollectionCreate(CollectionBase):
     Create a new collection with the given name and pipeline. for example
 
     {
-      "pipeline": "patched_image_search_milvus",
+      "pipeline": "patched_image_search_vastdb",
       "name": "custom_param_collection",
       "collection_config": {
         "num_partitions": 10,
@@ -563,7 +563,7 @@ class SearchRequest(BaseModel):
     )
     filters: Union[Dict[str, Any], str] = Field(
         default={},
-        description="Extra filters, see https://milvus.io/docs/boolean.md for EBNF syntax examples",  # noqa
+        description="Extra filters, see https://vastdb.io/docs/boolean.md for EBNF syntax examples",  # noqa
     )
     generate_asset_url: Optional[bool] = Field(
         default=True, description="Whether to generate asset URLs."
@@ -588,7 +588,7 @@ class TopKSearch(BaseModel):
     )
     filters: Union[Dict[str, Any], str] = Field(
         default={},
-        description="Extra filters, see https://milvus.io/docs/boolean.md or https://docs.haystack.deepset.ai/docs/metadata-filtering for supported EBNF syntax examples",  # noqa
+        description="Extra filters, see https://vastdb.io/docs/boolean.md or https://docs.haystack.deepset.ai/docs/metadata-filtering for supported EBNF syntax examples",  # noqa
     )
     reconstruct: bool = Field(
         default=False, description="Whether to return the document embedding."
@@ -622,7 +622,7 @@ class RadiusSearch(BaseModel):
     )
     filters: Dict[str, Any] = Field(
         default={},
-        description="Extra filters, see https://milvus.io/docs/boolean.md or https://docs.haystack.deepset.ai/docs/metadata-filtering for supported EBNF syntax examples",  # noqa
+        description="Extra filters, see https://vastdb.io/docs/boolean.md or https://docs.haystack.deepset.ai/docs/metadata-filtering for supported EBNF syntax examples",  # noqa
     )
     reconstruct: bool = Field(
         default=False, description="Whether to return the document embedding."
@@ -833,7 +833,7 @@ class BackfillQueueRequest(BaseModel):
     name: str = Field(description="Name of the backfill request.")
     sessions: Set[str] = Field(description="List of sessions to backfill index for.")
     collection_id: str = Field(
-        description="The id of the milvus collection to upload data to."
+        description="The id of the vastdb collection to upload data to."
     )
 
     @validator("sessions")
@@ -1135,7 +1135,7 @@ class InsertDataRequest(BaseModel):
     """Request model for initiating a bulk insert job."""
 
     collection_name: str = Field(
-        ..., description="Target Milvus collection (ID or name)."
+        ..., description="Target VastDB collection (ID or name)."
     )
     parquet_paths: List[str] = Field(
         ...,
@@ -1168,7 +1168,7 @@ class InsertDataResponse(BaseModel):
     job_id: str = Field(
         ...,
         example="12345",
-        description="The unique ID assigned to the bulk insert job by Milvus.",
+        description="The unique ID assigned to the bulk insert job by VastDB.",
     )
 
 
@@ -1194,7 +1194,7 @@ class JobStatusResponse(BaseModel):
 
 
 class JobDetail(JobStatusResponse):
-    """Detailed information about a single bulk insert task retrieved from Milvus."""
+    """Detailed information about a single bulk insert task retrieved from VastDB."""
 
     row_count: Optional[int] = Field(None, description="Number of rows imported.")
     create_time_utc: Optional[int] = Field(

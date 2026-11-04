@@ -33,8 +33,6 @@ from src.visual_search.v1.apis.search import router as SearchApiRouter
 from src.visual_search.v1.apis.search_refinement import (
     router as SearchRefinementApiRouter,
 )
-from src.visual_search.v1.apis.milvus_admin import router as MilvusAdminApiRouter
-
 app = FastAPI(
     title="Visual Indexing and Search µService",
     description=(
@@ -87,7 +85,6 @@ app.include_router(LinearProbeApiRouter)
 app.include_router(SearchApiRouter)
 app.include_router(SearchRefinementApiRouter)
 app.include_router(PipelinesApiRouter)
-app.include_router(MilvusAdminApiRouter)
 app.include_router(BulkIndexingApiRouter)
 
 if os.getenv("EXPOSE_BACKFILL_ENDPOINT"):

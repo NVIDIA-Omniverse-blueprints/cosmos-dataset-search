@@ -39,7 +39,7 @@ async def test_train_linear_probe_happy_path(monkeypatch):
         lambda _coll: SimpleNamespace(query_pipeline=qp, query_pipeline_inputs={}),
     )
 
-    # Document store not Milvus: ensures branch that calls filter_documents(filters=..., return_embedding=True)
+    # Document store not VastDB: ensures branch that calls filter_documents(filters=..., return_embedding=True)
     class DS:
         def __init__(self):
             self.calls = []

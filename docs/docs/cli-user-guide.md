@@ -69,14 +69,14 @@ cds collections list --profile local
 
 ## S3 Configuration for Data Ingestion
 
-CDS ingests data from S3-compatible storage (LocalStack, MinIO, AWS S3). Configure S3 access using one of these methods:
+CDS ingests data from S3-compatible storage (Vast S3, MinIO, AWS S3). Configure S3 access using one of these methods:
 
 ### Option 1: Environment Variables (Quick Setup)
 
 ```bash
 export AWS_ACCESS_KEY_ID=test
 export AWS_SECRET_ACCESS_KEY=test
-export AWS_ENDPOINT_URL=http://localhost:4566  # Required for LocalStack/MinIO
+export AWS_ENDPOINT_URL=http://localhost:4566  # Required for Vast S3/MinIO
 export AWS_DEFAULT_REGION=us-east-1
 
 cds ingest files s3://bucket/videos/ --collection-id <ID> --extensions .mp4
@@ -93,11 +93,11 @@ aws_access_key_id = test
 aws_secret_access_key = test
 ```
 
-**`~/.aws/config`** - Endpoint URL (**required** for non-AWS S3 like localstack/minio):
+**`~/.aws/config`** - Endpoint URL (**required** for non-AWS S3 like vast-s3/minio):
 
 ```ini
 [profile cds-s3]
-endpoint_url = http://localstack:4566
+endpoint_url = http://vast-s3:4566
 region = us-east-1
 ```
 
@@ -107,7 +107,7 @@ For ingestion from AWS S3, your environment variables should look like:
 export AWS_ACCESS_KEY_ID=xxxxxxxxxxxxxxxx
 export AWS_SECRET_ACCESS_KEY=xxxxxxxxxxxxxxxxxxxx
 export AWS_DEFAULT_REGION=us-east-2
-# Do not set AWS_ENDPOINT_URL when using AWS S3 (only needed for LocalStack/MinIO)
+# Do not set AWS_ENDPOINT_URL when using AWS S3 (only needed for Vast S3/MinIO)
 ```
 
 Or, set up a profile in your AWS credentials/config files:
@@ -147,7 +147,7 @@ cds ingest files s3://bucket/videos/ \
 
 **Key Notes:**
 - Always use `s3://` URIs (not presigned URLs)
-- For LocalStack, default endpoint is `http://localhost:4566`
+- For Vast S3, default endpoint is `http://localhost:4566`
 - Profile name format differs: `[cds-s3]` in credentials, `[profile cds-s3]` in config
 
 ## Managing Pipelines
@@ -165,7 +165,7 @@ cds pipelines list
 {
   "pipelines": [
     {
-      "id": "cosmos_video_search_milvus",
+      "id": "cosmos_video_search_vastdb",
       "enabled": true,
       "missing": []
     }
@@ -195,14 +195,14 @@ cds pipelines list --profile production
 Create a new collection for storing and searching videos:
 
 ```bash
-cds collections create --pipeline cosmos_video_search_milvus --name "My Video Collection"
+cds collections create --pipeline cosmos_video_search_vastdb --name "My Video Collection"
 ```
 
 **Example output**:
 ```json
 {
   "collection": {
-    "pipeline": "cosmos_video_search_milvus",
+    "pipeline": "cosmos_video_search_vastdb",
     "name": "My Video Collection",
     "tags": {
       "default_index": "GPU_CAGRA"
@@ -221,7 +221,7 @@ cds collections create --pipeline cosmos_video_search_milvus --name "My Video Co
 
 ```bash
 cds collections create \
-  --pipeline cosmos_video_search_milvus \
+  --pipeline cosmos_video_search_vastdb \
   --name "High Performance Collection" \
   --index-type GPU_CAGRA
 ```
@@ -242,7 +242,7 @@ index_config:
 EOF
 
 cds collections create \
-  --pipeline cosmos_video_search_milvus \
+  --pipeline cosmos_video_search_vastdb \
   --name "Custom Collection" \
   --config-yaml my-collection-config.yaml
 ```
@@ -260,7 +260,7 @@ cds collections list
 {
   "collections": [
     {
-      "pipeline": "cosmos_video_search_milvus",
+      "pipeline": "cosmos_video_search_vastdb",
       "name": "My Video Collection",
       "tags": {
         "default_index": "GPU_CAGRA"
@@ -286,7 +286,7 @@ cds collections get a87235cc0_7a76_493a_8610_72080629baeb
 ```json
 {
   "collection": {
-    "pipeline": "cosmos_video_search_milvus",
+    "pipeline": "cosmos_video_search_vastdb",
     "name": "My Video Collection",
     "tags": {
       "storage-template": "s3://my-video-bucket/msrvtt-videos/{{filename}}",
@@ -414,19 +414,19 @@ aws configure set region us-east-2 --profile cds-s3-aws
 **Ingest parquet embeddings**:
 
 > **⚠️ Important Requirements**:
-> 1. The parquet file **must be in the same S3 bucket that Milvus is configured to use** (check your `milvus-values.yaml` for `externalS3.bucketName`)
+> 1. The parquet file **must be in the same S3 bucket that VastDB is configured to use** (check your `vastdb-values.yaml` for `externalS3.bucketName`)
 > 2. The parquet file should **only contain columns defined in the collection schema** (typically `id` and `embedding`)
-> 3. For metadata fields, they must be formatted using Milvus's `$meta` column format (not supported via `--metadata-cols` parameter)
+> 3. For metadata fields, they must be formatted using VastDB's `$meta` column format (not supported via `--metadata-cols` parameter)
 
 ```bash
-# Assumption is that your aws cli is configured and you have your milvus bucket configured
+# Assumption is that your aws cli is configured and you have your vastdb bucket configured
 # First, ensure your parquet file is in the correct bucket
-# Example: if Milvus is configured to use bucket 'my-milvus-bucket'
-aws s3 cp s3://your-source-bucket/embeddings.parquet s3://my-milvus-bucket/embeddings.parquet
+# Example: if VastDB is configured to use bucket 'my-vastdb-bucket'
+aws s3 cp s3://your-source-bucket/embeddings.parquet s3://my-vastdb-bucket/embeddings.parquet
 
 # Then ingest (without metadata columns)
 cds ingest embeddings \
-  --parquet-dataset s3://my-video-bucket/milvus_embeddings.parquet \
+  --parquet-dataset s3://my-video-bucket/vastdb_embeddings.parquet \
   --collection-id a68495826_0c1d_4de4_8cdd_9e309d876ad7 \
   --id-cols id \
   --embeddings-col embedding \
@@ -434,7 +434,7 @@ cds ingest embeddings \
 ```
 
 **Parameters**:
-- `--parquet-dataset` - S3 path to parquet file(s) (must be in Milvus's configured bucket)
+- `--parquet-dataset` - S3 path to parquet file(s) (must be in VastDB's configured bucket)
 - `--id-cols` - Columns to generate document IDs from (required)
 - `--embeddings-col` - Column containing embedding vectors (default: "embeddings")
 - `--s3-profile` - AWS profile with S3 credentials
@@ -617,7 +617,7 @@ docker exec cds-deployment kubectl get secrets
 When creating a collection that references S3 videos:
 
 ```bash
-cds collections create --pipeline cosmos_video_search_milvus \
+cds collections create --pipeline cosmos_video_search_vastdb \
   --name "My Collection" \
   --config-yaml <(echo "
 tags:

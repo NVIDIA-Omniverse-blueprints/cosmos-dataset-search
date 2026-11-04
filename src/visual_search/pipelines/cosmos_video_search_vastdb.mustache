@@ -15,7 +15,8 @@
 
 index:
   description: |
-    Video indexing and search pipeline using Milvus.
+    Video indexing and search pipeline using VAST Database (VastDB) as the
+    vector store and Vast S3 for media objects.
   inputs:
     index_name:
       - writer.index_name
@@ -35,15 +36,18 @@ index:
       writer:
         init_parameters:
           document_store:
-            type: src.haystack.components.milvus.document_store.MilvusDocumentStore
+            type: src.haystack.components.vastdb.document_store.VastDocumentStore
             init_parameters:
-              uri: "{{{ MILVUS_DOCUMENT_STORE_URI }}}"
-              api_key: null
-              database: "{{{ MILVUS_DB }}}"
+              endpoint: "{{{ VASTDB_ENDPOINT }}}"
+              access_key: "{{{ VAST_ACCESS_KEY }}}"
+              secret_key: "{{{ VAST_SECRET_KEY }}}"
+              bucket: "{{{ VASTDB_BUCKET }}}"
+              schema_name: "{{{ VASTDB_SCHEMA }}}"
               embedding_dim: 256  # Cosmos-embed produces 256 dimensions
               similarity: "IP"
+              adbc_driver_path: "{{{ VAST_ADBC_DRIVER_PATH }}}"
           policy: OVERWRITE
-        type: src.haystack.components.milvus.document_writer.MilvusDocumentWriter
+        type: src.haystack.components.vastdb.document_writer.VastDocumentWriter
     connections:
       - sender: router.to_index
         receiver: embedder.documents
@@ -98,17 +102,20 @@ query:
       retriever:
         init_parameters:
           document_store:
-            type: src.haystack.components.milvus.document_store.MilvusDocumentStore
+            type: src.haystack.components.vastdb.document_store.VastDocumentStore
             init_parameters:
-              uri: "{{{ MILVUS_DOCUMENT_STORE_URI }}}"
-              api_key: null
-              database: "{{{ MILVUS_DB }}}"
+              endpoint: "{{{ VASTDB_ENDPOINT }}}"
+              access_key: "{{{ VAST_ACCESS_KEY }}}"
+              secret_key: "{{{ VAST_SECRET_KEY }}}"
+              bucket: "{{{ VASTDB_BUCKET }}}"
+              schema_name: "{{{ VASTDB_SCHEMA }}}"
               embedding_dim: 256
               similarity: "IP"
+              adbc_driver_path: "{{{ VAST_ADBC_DRIVER_PATH }}}"
           filters: null
           top_k: 10
           reconstruct: False
-        type: src.haystack.components.milvus.embedding_retriever.MilvusEmbeddingRetriever
+        type: src.haystack.components.vastdb.embedding_retriever.VastEmbeddingRetriever
       document_joiner:
         init_parameters:
           type_alias: haystack.Document
@@ -116,7 +123,6 @@ query:
       reranker:
         type: src.haystack.components.rankers.ScoreRanker
     connections:
-      # route to specific embedders
       - sender: router.texts
         receiver: text_embedder.texts
       - sender: router.videos
@@ -124,7 +130,6 @@ query:
       - sender: router.clips
         receiver: session_segment_embedder.clips
 
-      # batch embeddings
       - sender: router.embeddings
         receiver: embedding_batcher.input
       - sender: video_embedder.embeddings
@@ -134,17 +139,14 @@ query:
       - sender: session_segment_embedder.embeddings
         receiver: embedding_batcher.input
 
-      # query learner
       - sender: embedding_batcher.output
         receiver: query_learner.grounding_embeddings
 
-      # batched retrieval
       - sender: query_learner.query_embeddings
         receiver: retriever.query_embeddings
       - sender: retriever.documents
         receiver: document_joiner.input
 
-      # final re-rank
       - sender: document_joiner.output
         receiver: reranker.documents
 

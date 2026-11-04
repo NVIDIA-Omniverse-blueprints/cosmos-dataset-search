@@ -38,15 +38,15 @@ managedNodeGroups:
     labels:
       role: cvs-gpu
 
-  - name: milvus-query
+  - name: vastdb-query
     instanceType: r7i.4xlarge  # 16 vCPU, 128 GB RAM
     desiredCapacity: 1
     minSize: 1
     maxSize: 1
     volumeSize: 120
     labels:
-      nodegroup: milvus
-      role: milvus-query
+      nodegroup: vastdb
+      role: vastdb-query
       memory-type: high
     taints:
       - key: dedicated

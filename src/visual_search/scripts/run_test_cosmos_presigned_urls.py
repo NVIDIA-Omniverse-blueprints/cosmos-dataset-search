@@ -30,7 +30,7 @@ import requests
 # ------------------------------------------------------------------
 DEFAULT_COSMOS_EMBED_URI = "http://localhost:9000"
 DEFAULT_BUCKET = "cosmos-test-bucket"
-S3_ENDPOINT = "http://localhost:4566"  # LocalStack default
+S3_ENDPOINT = "http://localhost:4566"  # Vast S3 default
 AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
 # ------------------------------------------------------------------
 
@@ -89,14 +89,14 @@ def main(argv=None):
     p.add_argument(
         "--endpoint-url",
         default=S3_ENDPOINT,
-        help="Custom S3 endpoint (LocalStack/MinIO). If unset," " boto3 uses real AWS",
+        help="Custom S3 endpoint (Vast S3/MinIO). If unset," " boto3 uses real AWS",
     )
     # Optional: replace the hostname in the generated presigned URLs so
     # they are reachable from inside the CE1 OSS service container.
     p.add_argument(
         "--url-host",
         help="Override hostname part of presigned URLs "
-        "(e.g. 'localstack' or 'host.docker.internal').",
+        "(e.g. 'vast-s3' or 'host.docker.internal').",
     )
     p.add_argument(
         "video_files", nargs="+", help="Local video files (.mp4, .mov …) to upload (≥2)"

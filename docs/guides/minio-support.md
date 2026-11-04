@@ -14,7 +14,7 @@ CVDS uses boto3 for S3 operations, providing native compatibility with MinIO. Si
 
 ## CDS 1.2.0 security configuration
 
-Use credentials and an endpoint appropriate to your deployment; the example `minioadmin` credentials below are for isolated local evaluation only. A service in a pod/container cannot reach a separate MinIO service through its own `localhost`. Configure a hostname reachable from CDS, CE1 and Milvus. If CE1 Compose already uses host port 9000, use a different host port for MinIO.
+Use credentials and an endpoint appropriate to your deployment; the example `minioadmin` credentials below are for isolated local evaluation only. A service in a pod/container cannot reach a separate MinIO service through its own `localhost`. Configure a hostname reachable from CDS, CE1 and VastDB. If CE1 Compose already uses host port 9000, use a different host port for MinIO.
 
 For private/HTTP media endpoints, configure CE1's explicit endpoint/origin opt-in. CDS text/Parquet imports use a separate [URL and S3 endpoint policy](../docs/import-url-security.md). Configure both policies when both paths are used; do not disable validation to make a private endpoint work.
 
@@ -94,7 +94,7 @@ VS_API="your-cvds-api-endpoint"  # e.g., localhost:8888 or your ingress hostname
 COLLECTION=$(curl -s -X POST "https://$VS_API/v1/collections" \
   -H "Content-Type: application/json" \
   -d '{
-    "pipeline": "cosmos_video_search_milvus",
+    "pipeline": "cosmos_video_search_vastdb",
     "name": "MinIO Video Collection",
     "tags": {
       "storage-template": "s3://'$BUCKET_NAME'/videos/{{filename}}",

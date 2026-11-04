@@ -28,7 +28,7 @@ from haystack import Document as HaystackDocument
 from src.visual_search.common.models import Collection
 from src.visual_search.common.pipelines import EnabledPipeline
 from src.visual_search.v1.apis.document_indexing import delete_document
-from src.haystack.components.milvus.document_store import MilvusDocumentStore
+from src.haystack.components.vastdb.document_store import VastDocumentStore
 
 
 # --------------------------------------------------------------------------- #
@@ -40,7 +40,7 @@ def mock_collection():
     """Mock Collection for testing."""
     collection = MagicMock(spec=Collection)
     collection.id = "test_collection_123"
-    collection.pipeline = "cosmos_video_search_milvus"
+    collection.pipeline = "cosmos_video_search_vastdb"
     return collection
 
 
@@ -48,23 +48,23 @@ def mock_collection():
 def mock_pipeline():
     """Mock EnabledPipeline for testing."""
     pipeline = MagicMock(spec=EnabledPipeline)
-    pipeline.id = "cosmos_video_search_milvus"
+    pipeline.id = "cosmos_video_search_vastdb"
     pipeline.index_pipeline = MagicMock()  # Add the missing index_pipeline attribute
     return pipeline
 
 
 @pytest.fixture
-def mock_milvus_document_store():
-    """Mock MilvusDocumentStore for testing."""
-    store = MagicMock(spec=MilvusDocumentStore)
+def mock_vast_document_store():
+    """Mock VastDocumentStore for testing."""
+    store = MagicMock(spec=VastDocumentStore)
     return store
 
 
 @pytest.fixture
-def mock_non_milvus_document_store():
-    """Mock non-Milvus document store for testing."""
+def mock_other_document_store():
+    """Mock non-VastDB document store for testing."""
     store = MagicMock()
-    # Ensure it's not identified as Milvus
+    # Ensure it's not identified as VastDB
     store.__class__.__name__ = "SomeOtherDocumentStore"
     return store
 
@@ -73,25 +73,25 @@ def mock_non_milvus_document_store():
 # Test Cases for Document Deletion Fix                                       #
 # --------------------------------------------------------------------------- #
 
-def test_delete_document_by_source_id_success(mock_collection, mock_pipeline, mock_milvus_document_store):
+def test_delete_document_by_source_id_success(mock_collection, mock_pipeline, mock_vast_document_store):
     """Test successful deletion using source_id (original behavior)."""
     # Arrange
     test_doc_id = "api_001_video_segment-test123"
     mock_document = HaystackDocument(
-        id="milvus_generated_uuid_12345",
+        id="vastdb_generated_uuid_12345",
         content="test content",
         meta={"source_id": test_doc_id, "other_meta": "value"}
     )
     
     # Mock document store returns document when filtered by source_id
-    mock_milvus_document_store.filter_documents.return_value = [mock_document]
+    mock_vast_document_store.filter_documents.return_value = [mock_document]
     
     with patch('src.visual_search.v1.apis.document_indexing.get_pipeline_by_collection') as mock_get_pipeline, \
          patch('src.visual_search.v1.apis.document_indexing.get_document_stores') as mock_get_stores, \
          patch('src.visual_search.v1.apis.document_indexing.create_safe_name') as mock_safe_name:
         
         mock_get_pipeline.return_value = mock_pipeline
-        mock_get_stores.return_value = [mock_milvus_document_store]
+        mock_get_stores.return_value = [mock_vast_document_store]
         mock_safe_name.return_value = "safe_collection_name"
         
         # Act
@@ -106,19 +106,19 @@ def test_delete_document_by_source_id_success(mock_collection, mock_pipeline, mo
         assert result.message == "Resource deleted successfully."
         
         # Verify the correct filter was used (source_id lookup)
-        mock_milvus_document_store.filter_documents.assert_called_with(
+        mock_vast_document_store.filter_documents.assert_called_with(
             collection_name="safe_collection_name",
             filters={"field": "meta.source_id", "operator": "==", "value": test_doc_id}
         )
         
         # Verify deletion was called with the actual document ID
-        mock_milvus_document_store.delete_documents.assert_called_once_with(
+        mock_vast_document_store.delete_documents.assert_called_once_with(
             collection_name="safe_collection_name",
-            document_ids=["milvus_generated_uuid_12345"]
+            document_ids=["vastdb_generated_uuid_12345"]
         )
 
 
-def test_delete_document_by_document_id_success(mock_collection, mock_pipeline, mock_milvus_document_store):
+def test_delete_document_by_document_id_success(mock_collection, mock_pipeline, mock_vast_document_store):
     """Test successful deletion using document.id (new behavior - the fix!)."""
     # Arrange
     ui_displayed_id = "638f6f9af2d2902255881590baaf8805ac490ed5c4b39849ed537f0c6c5b3404"
@@ -129,7 +129,7 @@ def test_delete_document_by_document_id_success(mock_collection, mock_pipeline, 
     )
     
     # Mock document store returns empty for source_id, but finds by document.id
-    mock_milvus_document_store.filter_documents.side_effect = [
+    mock_vast_document_store.filter_documents.side_effect = [
         [],  # First call (source_id filter) returns empty
         [mock_document]  # Second call (document.id filter) returns the document
     ]
@@ -139,7 +139,7 @@ def test_delete_document_by_document_id_success(mock_collection, mock_pipeline, 
          patch('src.visual_search.v1.apis.document_indexing.create_safe_name') as mock_safe_name:
         
         mock_get_pipeline.return_value = mock_pipeline
-        mock_get_stores.return_value = [mock_milvus_document_store]
+        mock_get_stores.return_value = [mock_vast_document_store]
         mock_safe_name.return_value = "safe_collection_name"
         
         # Act
@@ -154,39 +154,39 @@ def test_delete_document_by_document_id_success(mock_collection, mock_pipeline, 
         assert result.message == "Resource deleted successfully."
         
         # Verify both filters were attempted
-        assert mock_milvus_document_store.filter_documents.call_count == 2
+        assert mock_vast_document_store.filter_documents.call_count == 2
         
         # First call: source_id lookup
-        first_call = mock_milvus_document_store.filter_documents.call_args_list[0]
+        first_call = mock_vast_document_store.filter_documents.call_args_list[0]
         assert first_call[1]["filters"]["field"] == "meta.source_id"
         assert first_call[1]["filters"]["value"] == ui_displayed_id
         
         # Second call: document.id lookup (the fix!)
-        second_call = mock_milvus_document_store.filter_documents.call_args_list[1]
+        second_call = mock_vast_document_store.filter_documents.call_args_list[1]
         assert second_call[1]["filters"]["field"] == "id"
         assert second_call[1]["filters"]["value"] == ui_displayed_id
         
         # Verify deletion was called
-        mock_milvus_document_store.delete_documents.assert_called_once_with(
+        mock_vast_document_store.delete_documents.assert_called_once_with(
             collection_name="safe_collection_name",
             document_ids=[ui_displayed_id]
         )
 
 
-def test_delete_document_not_found_both_lookups_fail(mock_collection, mock_pipeline, mock_milvus_document_store):
+def test_delete_document_not_found_both_lookups_fail(mock_collection, mock_pipeline, mock_vast_document_store):
     """Test 404 error when document is not found by either lookup method."""
     # Arrange
     nonexistent_id = "does_not_exist_123"
     
     # Mock document store returns empty for both lookups
-    mock_milvus_document_store.filter_documents.return_value = []
+    mock_vast_document_store.filter_documents.return_value = []
     
     with patch('src.visual_search.v1.apis.document_indexing.get_pipeline_by_collection') as mock_get_pipeline, \
          patch('src.visual_search.v1.apis.document_indexing.get_document_stores') as mock_get_stores, \
          patch('src.visual_search.v1.apis.document_indexing.create_safe_name') as mock_safe_name:
         
         mock_get_pipeline.return_value = mock_pipeline
-        mock_get_stores.return_value = [mock_milvus_document_store]
+        mock_get_stores.return_value = [mock_vast_document_store]
         mock_safe_name.return_value = "safe_collection_name"
         
         # Act & Assert
@@ -203,11 +203,11 @@ def test_delete_document_not_found_both_lookups_fail(mock_collection, mock_pipel
         assert "searched both by source_id and document id" in exc_info.value.detail
         
         # Verify both lookups were attempted
-        assert mock_milvus_document_store.filter_documents.call_count == 2
+        assert mock_vast_document_store.filter_documents.call_count == 2
 
 
-def test_delete_document_with_non_milvus_store(mock_collection, mock_pipeline, mock_non_milvus_document_store):
-    """Test deletion works with non-Milvus document stores (backward compatibility)."""
+def test_delete_document_with_non_vastdb_store(mock_collection, mock_pipeline, mock_other_document_store):
+    """Test deletion works with non-VastDB document stores (backward compatibility)."""
     # Arrange
     test_doc_id = "test_doc_123"
     mock_document = HaystackDocument(
@@ -216,15 +216,15 @@ def test_delete_document_with_non_milvus_store(mock_collection, mock_pipeline, m
         meta={"source_id": test_doc_id}
     )
     
-    # Mock non-Milvus store behavior
-    mock_non_milvus_document_store.filter_documents.return_value = [mock_document]
+    # Mock non-VastDB store behavior
+    mock_other_document_store.filter_documents.return_value = [mock_document]
     
     with patch('src.visual_search.v1.apis.document_indexing.get_pipeline_by_collection') as mock_get_pipeline, \
          patch('src.visual_search.v1.apis.document_indexing.get_document_stores') as mock_get_stores, \
          patch('src.visual_search.v1.apis.document_indexing.create_safe_name') as mock_safe_name:
         
         mock_get_pipeline.return_value = mock_pipeline
-        mock_get_stores.return_value = [mock_non_milvus_document_store]
+        mock_get_stores.return_value = [mock_other_document_store]
         mock_safe_name.return_value = "safe_collection_name"
         
         # Act
@@ -237,24 +237,24 @@ def test_delete_document_with_non_milvus_store(mock_collection, mock_pipeline, m
         # Assert
         assert result.id == test_doc_id
         
-        # Verify non-Milvus store was called correctly (no collection_name parameter)
-        mock_non_milvus_document_store.filter_documents.assert_called_with(
+        # Verify non-VastDB store was called correctly (no collection_name parameter)
+        mock_other_document_store.filter_documents.assert_called_with(
             filters={"field": "meta.source_id", "operator": "==", "value": test_doc_id}
         )
-        mock_non_milvus_document_store.delete_documents.assert_called_once_with(
+        mock_other_document_store.delete_documents.assert_called_once_with(
             document_ids=["some_id"]
         )
 
 
-def test_delete_document_fallback_exception_handling(mock_collection, mock_pipeline, mock_milvus_document_store):
+def test_delete_document_fallback_exception_handling(mock_collection, mock_pipeline, mock_vast_document_store):
     """Test that exceptions in the document.id lookup are handled gracefully."""
     # Arrange
     test_doc_id = "test_doc_123"
     
     # First call (source_id) returns empty, second call (document.id) raises exception
-    mock_milvus_document_store.filter_documents.side_effect = [
+    mock_vast_document_store.filter_documents.side_effect = [
         [],  # source_id lookup returns empty
-        Exception("Milvus error")  # document.id lookup fails
+        Exception("VastDB error")  # document.id lookup fails
     ]
     
     with patch('src.visual_search.v1.apis.document_indexing.get_pipeline_by_collection') as mock_get_pipeline, \
@@ -262,10 +262,10 @@ def test_delete_document_fallback_exception_handling(mock_collection, mock_pipel
          patch('src.visual_search.v1.apis.document_indexing.create_safe_name') as mock_safe_name:
         
         mock_get_pipeline.return_value = mock_pipeline
-        mock_get_stores.return_value = [mock_milvus_document_store]
+        mock_get_stores.return_value = [mock_vast_document_store]
         mock_safe_name.return_value = "safe_collection_name"
         
-        # Act & Assert - should get 404, not the Milvus exception
+        # Act & Assert - should get 404, not the VastDB exception
         with pytest.raises(HTTPException) as exc_info:
             delete_document(
                 collection=mock_collection, 
@@ -316,10 +316,10 @@ def test_delete_document_multiple_stores_success(mock_collection, mock_pipeline)
     )
     
     # Create multiple stores - first one empty, second one has the document
-    store1 = MagicMock(spec=MilvusDocumentStore)
+    store1 = MagicMock(spec=VastDocumentStore)
     store1.filter_documents.return_value = []
     
-    store2 = MagicMock(spec=MilvusDocumentStore)
+    store2 = MagicMock(spec=VastDocumentStore)
     store2.filter_documents.return_value = [mock_document]
     
     with patch('src.visual_search.v1.apis.document_indexing.get_pipeline_by_collection') as mock_get_pipeline, \
@@ -353,18 +353,18 @@ def test_delete_document_multiple_stores_success(mock_collection, mock_pipeline)
 # Edge Cases and Error Conditions                                            #
 # --------------------------------------------------------------------------- #
 
-def test_delete_document_edge_case_empty_string_id(mock_collection, mock_pipeline, mock_milvus_document_store):
+def test_delete_document_edge_case_empty_string_id(mock_collection, mock_pipeline, mock_vast_document_store):
     """Test behavior with edge case inputs like empty string."""
     # Arrange
     empty_id = ""
-    mock_milvus_document_store.filter_documents.return_value = []
+    mock_vast_document_store.filter_documents.return_value = []
     
     with patch('src.visual_search.v1.apis.document_indexing.get_pipeline_by_collection') as mock_get_pipeline, \
          patch('src.visual_search.v1.apis.document_indexing.get_document_stores') as mock_get_stores, \
          patch('src.visual_search.v1.apis.document_indexing.create_safe_name') as mock_safe_name:
         
         mock_get_pipeline.return_value = mock_pipeline
-        mock_get_stores.return_value = [mock_milvus_document_store]
+        mock_get_stores.return_value = [mock_vast_document_store]
         mock_safe_name.return_value = "safe_collection_name"
         
         # Act & Assert

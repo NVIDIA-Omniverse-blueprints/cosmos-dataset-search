@@ -322,21 +322,21 @@ docker exec cds-deployment bash -c "kubectl top nodes"
 
 ### Database Issues
 
-#### Milvus Connection Errors
+#### VastDB Connection Errors
 
-**Check Milvus pods**:
+**Check VastDB pods**:
 ```bash
-docker exec cds-deployment bash -c "kubectl get pods | grep milvus"
+docker exec cds-deployment bash -c "kubectl get pods | grep vastdb"
 ```
 
-**Check Milvus proxy logs**:
+**Check VastDB proxy logs**:
 ```bash
-docker exec cds-deployment bash -c "kubectl logs deployment/milvus-proxy --tail=100"
+docker exec cds-deployment bash -c "kubectl logs deployment/vastdb-proxy --tail=100"
 ```
 
-**Test Milvus connectivity**:
+**Test VastDB connectivity**:
 ```bash
-docker exec cds-deployment bash -c "kubectl run -it --rm debug --image=busybox --restart=Never -- nc -zv milvus.default.svc.cluster.local 19530"
+docker exec cds-deployment bash -c "kubectl run -it --rm debug --image=busybox --restart=Never -- nc -zv vastdb.default.svc.cluster.local 19530"
 ```
 
 #### etcd Issues
@@ -344,7 +344,7 @@ docker exec cds-deployment bash -c "kubectl run -it --rm debug --image=busybox -
 **Check etcd pod**:
 ```bash
 docker exec cds-deployment bash -c "kubectl get pods | grep etcd"
-docker exec cds-deployment bash -c "kubectl logs milvus-etcd-0 --tail=100"
+docker exec cds-deployment bash -c "kubectl logs vastdb-etcd-0 --tail=100"
 ```
 
 **Common Issues**:
@@ -353,9 +353,9 @@ docker exec cds-deployment bash -c "kubectl logs milvus-etcd-0 --tail=100"
 
 #### Data Persistence Issues
 
-**Check PVCs for Milvus**:
+**Check PVCs for VastDB**:
 ```bash
-docker exec cds-deployment bash -c "kubectl get pvc | grep milvus"
+docker exec cds-deployment bash -c "kubectl get pvc | grep vastdb"
 ```
 
 **Check if data is actually in S3**:
@@ -367,9 +367,9 @@ aws s3 ls s3://$S3_BUCKET_NAME/ --recursive | head -20
 
 #### Slow Query Response
 
-**Check Milvus query node**:
+**Check VastDB query node**:
 ```bash
-docker exec cds-deployment bash -c "kubectl logs deployment/milvus-querynode --tail=100"
+docker exec cds-deployment bash -c "kubectl logs deployment/vastdb-querynode --tail=100"
 docker exec cds-deployment bash -c "kubectl top pod -l component=querynode"
 ```
 
@@ -414,7 +414,7 @@ docker exec cds-deployment bash -c "kubectl logs deployment/visual-search --tail
 ```
 
 **Common Issues**:
-- Can't connect to Milvus: Check Milvus is running
+- Can't connect to VastDB: Check VastDB is running
 - Can't connect to Cosmos-embed: Check cosmos-embed pod is ready
 - 500 errors: Check logs for specific error messages
 
@@ -435,24 +435,24 @@ docker exec cds-deployment bash -c "cd /workspace/blueprint/bringup && ./debug_c
 - Pending: Check GPU nodes and resources
 - Long startup time: Normal - downloading model
 
-### Milvus Vector Database
+### VastDB Vector Database
 
-**Check all Milvus components**:
+**Check all VastDB components**:
 ```bash
-docker exec cds-deployment bash -c "kubectl get pods | grep milvus"
+docker exec cds-deployment bash -c "kubectl get pods | grep vastdb"
 ```
 
 **Expected pods** (15 total):
-- milvus-proxy
-- milvus-rootcoord, datacoord, querycoord, indexcoord
-- milvus-querynode, datanode, indexnode
-- milvus-etcd-0
-- milvus-kafka-0, kafka-1, kafka-2
-- milvus-zookeeper-0
+- vastdb-proxy
+- vastdb-rootcoord, datacoord, querycoord, indexcoord
+- vastdb-querynode, datanode, indexnode
+- vastdb-etcd-0
+- vastdb-kafka-0, kafka-1, kafka-2
+- vastdb-zookeeper-0
 
 **Check specific component**:
 ```bash
-docker exec cds-deployment bash -c "kubectl logs deployment/milvus-<component> --tail=100"
+docker exec cds-deployment bash -c "kubectl logs deployment/vastdb-<component> --tail=100"
 ```
 
 ### Object Storage (S3)
@@ -490,8 +490,8 @@ docker exec cds-deployment bash -c "kubectl set env deployment/visual-search LOG
 # Forward Visual Search API
 docker exec -it cds-deployment bash -c "kubectl port-forward svc/visual-search 8888:8888"
 
-# Forward Milvus
-docker exec -it cds-deployment bash -c "kubectl port-forward svc/milvus 19530:19530"
+# Forward VastDB
+docker exec -it cds-deployment bash -c "kubectl port-forward svc/vastdb 19530:19530"
 
 # Forward Cosmos-embed
 docker exec -it cds-deployment bash -c "kubectl port-forward svc/cosmos-embed 8000:8000"
@@ -602,8 +602,8 @@ docker exec cds-deployment bash -c "kubectl rollout restart deployment/visual-se
 # Restart cosmos-embed
 docker exec cds-deployment bash -c "kubectl rollout restart deployment/cosmos-embed"
 
-# Restart Milvus component
-docker exec cds-deployment bash -c "kubectl rollout restart deployment/milvus-proxy"
+# Restart VastDB component
+docker exec cds-deployment bash -c "kubectl rollout restart deployment/vastdb-proxy"
 ```
 
 ### Scale Down and Up
@@ -663,7 +663,7 @@ Include:
 
 - [AWS EKS Best Practices](https://aws.github.io/aws-eks-best-practices/)
 - [Kubernetes Documentation](https://kubernetes.io/docs/)
-- [Milvus Troubleshooting](https://milvus.io/docs/troubleshooting.md)
+- [VastDB Troubleshooting](https://vastdb.io/docs/troubleshooting.md)
 - [CE1 OSS model files](https://huggingface.co/nvidia/Cosmos-Embed1-224p)
 - [AWS EKS Deployment Guide](aws-eks-deployment.md)
 - [CLI User Guide](cli-user-guide.md)

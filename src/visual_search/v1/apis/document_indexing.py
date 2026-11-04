@@ -30,8 +30,8 @@ from fastapi import APIRouter, Body, HTTPException
 from haystack import Document as HaystackDocument
 from haystack import Pipeline as HaystackPipeline
 from haystack.dataclasses import ByteStream
-from src.haystack.components.milvus.document_store import MilvusDocumentStore
-from src.haystack.components.milvus.schema_utils import MetadataConfig
+from src.haystack.components.vector_store_utils import is_vector_document_store
+from src.haystack.components.schema_utils import MetadataConfig
 from src.haystack.components.video.cosmos_video_embedder import CosmosEmbedInputError
 from src.visual_search.common.remote_fetch import (
     FetchError,
@@ -321,7 +321,7 @@ def delete_document(
 
         # First try to find document by source_id (original API-provided ID)
         filters = {"field": "meta.source_id", "operator": "==", "value": document_id}
-        if isinstance(document_store, MilvusDocumentStore):
+        if is_vector_document_store(document_store):
             retrieved_documents = document_store.filter_documents(
                 collection_name=index_name,
                 filters=filters,
@@ -329,10 +329,10 @@ def delete_document(
         else:
             retrieved_documents = document_store.filter_documents(filters=filters)
 
-        # If not found by source_id, try to find by actual document ID (Milvus-generated UUID from UI)
+        # If not found by source_id, try to find by actual document ID (VastDB-generated UUID from UI)
         if len(retrieved_documents) == 0:
-            if isinstance(document_store, MilvusDocumentStore):
-                # For Milvus, try direct deletion by document ID
+            if is_vector_document_store(document_store):
+                # For VastDB, try direct deletion by document ID
                 try:
                     # Check if document exists by attempting to retrieve it directly
                     filters_by_id = {
@@ -364,7 +364,7 @@ def delete_document(
 
         if len(retrieved_documents) > 0:
             any_retrieved_docs = True
-            if isinstance(document_store, MilvusDocumentStore):
+            if is_vector_document_store(document_store):
                 document_store.delete_documents(
                     collection_name=index_name,
                     document_ids=[document.id for document in retrieved_documents],
@@ -426,7 +426,7 @@ def delete_documents_by_filter(
     index_name = create_safe_name(collection.id)
     for document_store in get_document_stores(index_pipeline):
         document_store_found = True
-        if isinstance(document_store, MilvusDocumentStore):
+        if is_vector_document_store(document_store):
             deleted_documents = document_store.delete_documents_by_filter(
                 collection_name=index_name, filters=filters
             )
@@ -531,7 +531,7 @@ def delete_existing_docs(
     """
     using a more performant method to query existing ids
     """
-    if isinstance(document_store, MilvusDocumentStore):
+    if is_vector_document_store(document_store):
         existing_ids = document_store.get_existing_ids(
             collection_name=index_name,
             ids=candidate_ids,
@@ -669,7 +669,7 @@ def create_parquet_table(
     - id_cols (list): Optional list of column names to be used for generating the IDs.
     - embeddings_col (str): The name of the column containing the embeddings.
     - metadata_cols (list): A list of column names to be used for generating the metadata JSON.
-    - fillna (bool): whether to fill NaN in metadata (Milvus does not accept NaN).
+    - fillna (bool): whether to fill NaN in metadata (VastDB does not accept NaN).
     - metadata_config: collection metadata configuration.
 
     Returns:

@@ -57,7 +57,7 @@ kubectl delete ingress simple-ingress || true
 echo "Uninstalling Helm releases..."
 helm uninstall visual-search || true
 helm uninstall cosmos-embed || true
-helm uninstall milvus || true
+# VastDB lives outside this cluster — nothing to uninstall for the vector store.
 
 # Force delete any remaining pods to speed up node drainage
 echo "Force deleting remaining pods..."

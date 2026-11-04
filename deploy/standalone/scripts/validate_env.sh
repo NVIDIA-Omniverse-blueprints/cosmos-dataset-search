@@ -179,7 +179,7 @@ check_cuda_devices() {
   value=${!var_name-}
 
   if [[ -z "$value" ]]; then
-    fail "${var_name} is empty. Set it to the GPU device IDs that Milvus can use (e.g., 0 or 0,1)."
+    fail "${var_name} is empty. Set it to the GPU device IDs that VastDB can use (e.g., 0 or 0,1)."
   fi
 
   if ! [[ "$value" =~ ^[0-9]+(,[0-9]+)*$ ]]; then
@@ -396,7 +396,8 @@ check_integer GUNICORN_TIMEOUT 30
 check_integer MAX_DOCS_PER_UPLOAD 1
 check_integer COSMOS_EMBED_GPUS 0
 
-check_cuda_devices MILVUS_CUDA_VISIBLE_DEVICES
+# check_cuda_devices removed — no VastDB on this branch
+# check_cuda_devices COSMOS_EMBED_GPUS
 
 # URI validations
 check_uri COSMOS_EMBED_URI
@@ -412,9 +413,9 @@ fi
 # Log level validations
 check_log_level VISUAL_SEARCH_LOG_LEVEL "DEBUG INFO WARNING ERROR CRITICAL"
 
-# AWS defaults (acceptable for LocalStack)
+# AWS defaults (acceptable for Vast S3)
 if [[ "$AWS_ACCESS_KEY_ID" == "test" && "$AWS_SECRET_ACCESS_KEY" == "test" ]]; then
-  log_info "Using AWS test credentials (expected for LocalStack)."
+  log_info "Using AWS test credentials (expected for Vast S3)."
 fi
 
 log_info "Environment validation completed successfully."

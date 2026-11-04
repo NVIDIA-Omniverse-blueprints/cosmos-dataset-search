@@ -8,6 +8,14 @@ Welcome to the NVIDIA Cosmos Dataset Search (CDS) documentation. This page provi
 - **[Runtime Architecture](architecture.md)** - CDS, CE1, storage and deployment boundaries
 - **[1.2.0 Container Images](release-containers.md)** - Published NGC tags and digests
 
+## VastDB vector store
+
+Run CDS against VAST Database + Vast S3:
+
+- **[VastDB vector store guide](vastdb-vector-store.md)** - Customer trial setup, env vars, API usage
+- **[VastDB architecture](vastdb-architecture.md)** - Flows, diagrams, DataEngine option
+- **[Technical blog: CDS on VastDB](../blog/cds-on-vastdb.md)** - Before/after narrative for NVIDIA & customers
+
 ## Quick Start Deployment
 
 Get CDS up and running quickly with these deployment guides:

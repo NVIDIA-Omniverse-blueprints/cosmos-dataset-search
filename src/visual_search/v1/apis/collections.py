@@ -20,7 +20,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, HTTPException, Query
 from haystack import Pipeline as HaystackPipeline
 
-from src.haystack.components.milvus.document_store import MilvusDocumentStore
+from src.haystack.components.vector_store_utils import is_vector_document_store
 from src.visual_search.common.apis.collections import (
     GetCollection,
     GetPipeline,
@@ -47,7 +47,7 @@ from src.visual_search.common.models import (
     DeleteResponse,
     make_path_with_id_restrictions,
 )
-from src.visual_search.v1.apis.utils.milvus_utils import create_safe_name
+from src.visual_search.common.naming import create_safe_name
 
 from ...common.pipelines import (
     EnabledPipeline,
@@ -67,10 +67,10 @@ def create_new_collection(
     ),
 ) -> Collection:
     """
-    Create a new collection and initialize its Milvus index.
+    Create a new collection and initialize its vector index (VastDB).
 
     This helper function handles the core logic of collection creation, including
-    ID generation, validation, metadata storage, and Milvus index initialization.
+    ID generation, validation, metadata storage, and VastDB table initialization.
 
     Args:
         collection: CollectionCreate object containing pipeline, name, tags, and configuration.
@@ -118,7 +118,7 @@ def create_new_collection(
 
     index_name = create_safe_name(stored_collection.id)
     for document_store in get_document_stores(index_pipeline):
-        if isinstance(document_store, MilvusDocumentStore):
+        if is_vector_document_store(document_store):
             document_store.create_index(
                 index=index_name,
                 collection_config=collection.collection_config,
@@ -209,7 +209,7 @@ def get_pipeline_collections(
             ).index_pipeline
             index_name = create_safe_name(collection.id)
             for document_store in get_document_stores(index_pipeline):
-                if isinstance(document_store, MilvusDocumentStore):
+                if is_vector_document_store(document_store):
                     documents_count += document_store.get_embedding_count(
                         collection_name=index_name
                     )
@@ -252,7 +252,7 @@ def get_collection_api(
     documents_count = 0
     index_name = create_safe_name(collection.id)
     for document_store in get_document_stores(index_pipeline):
-        if isinstance(document_store, MilvusDocumentStore):
+        if is_vector_document_store(document_store):
             documents_count += document_store.get_embedding_count(
                 collection_name=index_name
             )

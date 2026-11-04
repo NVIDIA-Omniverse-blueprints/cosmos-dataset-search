@@ -28,15 +28,6 @@ spec:
         app: {{ .Values.visualSearch.name }}
     spec:
       serviceAccountName: s3-access-sa
-      initContainers:
-      - name: wait-for-milvus
-        image: busybox
-        command:
-        - sh
-        - -c
-        - >-
-          until nc -z -v -w30 {{ .Values.milvus.name }}.{{ .Values.milvus.namespace }}.svc.cluster.local {{ .Values.milvus.port }};
-          do sleep 5; done
       containers:
       - name: {{ .Values.visualSearch.name }}
         image: {{ .Values.visualSearch.image.repository }}:{{ .Values.visualSearch.image.tag }}
@@ -63,10 +54,30 @@ spec:
           value: {{ .Values.env.GUNICORN_TIMEOUT | quote }}
         - name: GUNICORN_WORKERS
           value: {{ .Values.env.GUNICORN_WORKERS | quote }}
-        - name: MILVUS_DOCUMENT_STORE_URI
-          value: http://{{ .Values.milvus.name }}.{{ .Values.milvus.namespace }}.svc.cluster.local:{{ .Values.milvus.port }}
-        - name: MILVUS_DB
-          value: {{ .Values.milvus.db | quote }}
+        - name: ALLOWED_PIPELINES
+          value: {{ .Values.env.ALLOWED_PIPELINES | default "cosmos_video_search_vastdb" | quote }}
+        - name: VASTDB_ENDPOINT
+          value: {{ .Values.vastdb.endpoint | quote }}
+        - name: VAST_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.vastdb.secretName }}
+              key: access_key
+        - name: VAST_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.vastdb.secretName }}
+              key: secret_key
+        - name: VASTDB_BUCKET
+          value: {{ .Values.vastdb.bucket | quote }}
+        - name: VASTDB_SCHEMA
+          value: {{ .Values.vastdb.schema | quote }}
+        - name: VAST_ADBC_DRIVER_PATH
+          value: {{ .Values.vastdb.adbcDriverPath | quote }}
+        - name: AWS_ENDPOINT_URL
+          value: {{ .Values.vastS3.endpoint | quote }}
+        - name: VAST_S3_ENDPOINT
+          value: {{ .Values.vastS3.endpoint | quote }}
         - name: FASTAPI_ROOT_PATH
           value: {{ .Values.env.FASTAPI_ROOT_PATH | quote }}
         - name: NVIDIA_API_KEY
@@ -78,5 +89,14 @@ spec:
               key: SECRETS_ENCRYPTION_KEY
         - name: COSMOS_EMBED_URI
           value: http://{{ .Values.cosmosEmbed.name }}.{{ .Values.global.namespace }}.svc.cluster.local:{{ index .Values.cosmosEmbed.ports 0 "port" }}
+        volumeMounts:
+        - name: adbc-driver
+          mountPath: /opt/adbc-driver
+          readOnly: true
+      volumes:
+      - name: adbc-driver
+        hostPath:
+          path: {{ .Values.vastdb.adbcDriverHostPath | quote }}
+          type: Directory
       imagePullSecrets:
       - name: {{ .Values.imagePullSecret }}

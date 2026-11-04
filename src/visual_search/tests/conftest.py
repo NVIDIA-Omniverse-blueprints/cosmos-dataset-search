@@ -32,10 +32,10 @@ from src.visual_search.v1.apis.search import router as search_router
 
 
 # --------------------------------------------------------------------------- #
-# FakeStore - A comprehensive fake MilvusDocumentStore for testing            #
+# FakeStore - A comprehensive fake VastDocumentStore for testing            #
 # --------------------------------------------------------------------------- #
 class _FakeClient:
-    """Fake Milvus client with basic collection management."""
+    """Fake VastDB client with basic collection management."""
 
     _using = "default"
 
@@ -48,13 +48,13 @@ class _FakeClient:
 
 
 class FakeStore(MagicMock):
-    """Ultra-thin fake MilvusDocumentStore for testing purposes."""
+    """Ultra-thin fake VastDocumentStore for testing purposes."""
 
     def __init__(self, **kwargs):
         # Don't pass unexpected kwargs to parent
         super().__init__()
         self.client = _FakeClient()
-        # Pre-set the methods that _safe_is_milvus checks for
+        # Pre-set the methods that is_vector_document_store checks for
         self.bulk_insert_files = MagicMock()
         self.get_bulk_insert_state = MagicMock()
         self.list_bulk_insert_tasks = MagicMock()

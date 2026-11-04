@@ -21,7 +21,7 @@ These environment variables belong to the CDS visual-search service, not CE1:
 | `CDS_FETCH_S3_ENDPOINTS` | Exact custom S3 endpoint origins callers may select. Operator `AWS_ENDPOINT_URL_S3`/`AWS_ENDPOINT_URL` also authorize that endpoint. For a private endpoint, configure `CDS_FETCH_PRIVATE_ORIGINS` as well. |
 | `CDS_FETCH_MAX_TEXT_BYTES` | Positive text download limit in bytes; default `16777216`. |
 
-Use the `env` keys with the same names in Helm values. Standalone Compose forwards these variables and explicitly permits its own LocalStack service. Never use a caller-supplied value to populate these server settings.
+Use the `env` keys with the same names in Helm values. Standalone Compose forwards these variables and explicitly permits its own Vast S3 service. Never use a caller-supplied value to populate these server settings.
 
 For private MinIO, configure both `CDS_FETCH_PRIVATE_ORIGINS=http://minio:9000` and `CDS_FETCH_S3_ENDPOINTS=http://minio:9000`. The request's `endpoint_url` must match that origin. Credential handling and S3 bucket permissions remain unchanged.
 

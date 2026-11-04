@@ -45,9 +45,9 @@ logging.basicConfig(
 )
 LOGGER = logging.getLogger("evaluate-accuracy")
 
-DEFAULT_PIPELINE = "cosmos_video_search_milvus"
+DEFAULT_PIPELINE = "cosmos_video_search_vastdb"
 DEFAULT_BUCKET = "cosmos-test-bucket"
-DEFAULT_S3_ENDPOINT = "http://localstack:4566"
+DEFAULT_S3_ENDPOINT = "http://vast-s3:4566"
 DEFAULT_PROFILE = "local"
 RELEVANCE_CHOICES = ["instance", "class"]
 

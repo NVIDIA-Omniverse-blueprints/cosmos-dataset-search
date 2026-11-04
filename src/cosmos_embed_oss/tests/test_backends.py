@@ -1137,14 +1137,14 @@ def test_operator_endpoint_override_rewrites_local_emulator_alias(
 ) -> None:
     monkeypatch.setenv(
         backends.PRESIGNED_URL_ENDPOINT_ENV,
-        "http://localstack:4566",
+        "http://vast-s3:4566",
     )
 
     rewritten = backends._presigned_video_download_url(
         "http://localhost:4566/bucket/video.mp4?signature=abc"
     )
 
-    assert rewritten == ("http://localstack:4566/bucket/video.mp4?signature=abc")
+    assert rewritten == ("http://vast-s3:4566/bucket/video.mp4?signature=abc")
     backends._validate_presigned_download_url(rewritten)
 
 
@@ -1161,7 +1161,7 @@ def test_operator_endpoint_override_preserves_local_server_on_other_port(
 ) -> None:
     monkeypatch.setenv(
         backends.PRESIGNED_URL_ENDPOINT_ENV,
-        "http://localstack:4566",
+        "http://vast-s3:4566",
     )
     assert backends._presigned_video_download_url(url) == url
 
@@ -1215,7 +1215,7 @@ def test_operator_endpoint_override_does_not_rewrite_public_https(
 ) -> None:
     monkeypatch.setenv(
         backends.PRESIGNED_URL_ENDPOINT_ENV,
-        "http://localstack:4566",
+        "http://vast-s3:4566",
     )
 
     assert backends._presigned_video_download_url(url) == url

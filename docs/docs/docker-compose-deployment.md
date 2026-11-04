@@ -8,7 +8,7 @@ Before proceeding, ensure you have completed the [Docker Compose Prerequisites](
 - Docker and NVIDIA Container Toolkit installed
 - NGC authentication configured
 - Environment variables set or persisted
-- LocalStack hostname mapping added to `/etc/hosts`
+- Vast S3 hostname mapping added to `/etc/hosts`
 
 ## Overview
 
@@ -19,7 +19,18 @@ Docker Compose deployment provides a complete CDS stack running on a single node
 - Prototyping and experimentation
 
 The deployment includes the Visual Search API, the source-built CE1 OSS PyTorch
-service, Milvus vector database, and LocalStack S3 storage.
+service, VastDB vector store, and Vast S3 object storage.
+
+To run the same stack against **VastDB + Vast S3** (no VastDB / Vast S3),
+use the VastDB Compose overlay and
+[VastDB vector store guide](vastdb-vector-store.md):
+
+```bash
+cd deploy/standalone
+cp .env.vastdb.example .env
+docker compose -f docker-compose.build.yml -f docker-compose.ce1-oss.yml \
+  -f docker-compose.vastdb.yml up -d cosmos-embed visual-search
+```
 
 **Time Estimate**: First deployment takes 15-30 minutes after the model weights
 are available locally. Subsequent deployments take 2-5 minutes.
@@ -40,40 +51,40 @@ ls -la
 # You should see Makefile, pyproject.toml, and other project files
 ```
 
-### Step 2: Review Milvus Configuration (Optional)
+### Step 2: Review VastDB Configuration (Optional)
 
-CDS includes multiple Milvus configuration files:
+CDS includes multiple VastDB configuration files:
 
-- **Default (Recommended)**: `deploy/standalone/milvus_localstack.yaml` - Optimized for CVDS with LocalStack
-- **Official Reference**: `deploy/standalone/milvus_official_2_4_4.yaml` - Included Milvus 2.4.4 reference configuration; use a version-compatible configuration for your deployed Milvus image.
+- **Default (Recommended)**: `deploy/standalone/vastdb_vast-s3.yaml` - Optimized for CVDS with Vast S3
+- **Official Reference**: `deploy/standalone/vastdb_official_2_4_4.yaml` - Included VastDB 2.4.4 reference configuration; use a version-compatible configuration for your deployed VastDB image.
 
-**Key optimizations in `milvus_localstack.yaml` (default):**
+**Key optimizations in `vastdb_vast-s3.yaml` (default):**
 - GPU memory configuration for shared GPU with cosmos-embed
 - Storage V2 enabled with full configuration for better reliability
-- LocalStack S3 endpoints pre-configured
-- Automatic startup ordering for reliable milvus startup(cosmos-embed → milvus)
+- Vast S3 S3 endpoints pre-configured
+- Automatic startup ordering for reliable vastdb startup(cosmos-embed → vastdb)
 
-**To switch to official Milvus config:**
+**To switch to official VastDB config:**
 
 Edit `deploy/standalone/docker-compose.build.yml`:
 
 ```yaml
-milvus:
+vastdb:
   volumes:
-    # Option 1: Use LocalStack-optimized config (default, recommended)
-    - ./milvus_localstack.yaml:/milvus/configs/milvus.yaml
+    # Option 1: Use Vast S3-optimized config (default, recommended)
+    - ./vastdb_vast-s3.yaml:/vastdb/configs/vastdb.yaml
 
-    # Option 2: Use official Milvus config (requires manual LocalStack setup)
-    # - ./milvus_official_2_4_4.yaml:/milvus/configs/milvus.yaml
+    # Option 2: Use official VastDB config (requires manual Vast S3 setup)
+    # - ./vastdb_official_2_4_4.yaml:/vastdb/configs/vastdb.yaml
 ```
 
-**If using `milvus_official_2_4_4.yaml`, you MUST manually configure**:
-1. S3/LocalStack settings (`minio.address: localstack`, `minio.port: 4566`)
+**If using `vastdb_official_2_4_4.yaml`, you MUST manually configure**:
+1. S3/Vast S3 settings (`minio.address: vast-s3`, `minio.port: 4566`)
 2. GPU memory allocation (`gpu.initMemSize`, `gpu.maxMemSize`)
 3. Storage scheme (`common.storage.scheme: s3`)
 
 **To use a custom config:**
-1. Create a new copy and update S3 settings to point to LocalStack (see existing `milvus_localstack.yaml` or `milvus_official_2_4_4.yaml`).
+1. Create a new copy and update S3 settings to point to Vast S3 (see existing `vastdb_vast-s3.yaml` or `vastdb_official_2_4_4.yaml`).
 2. Set GPU memory allocation based on your hardware
 
 For GPU memory configuration details, see [GPU Memory Management Guide](../guides/gpu-memory-management.md).
@@ -113,12 +124,12 @@ vi deploy/standalone/.env
    mkdir -p $HOME/cds-data
    ```
 
-   This folder is used to enable faster LocalStack uploads by providing direct file system access to the containerized S3 service.
+   This folder is used to enable faster Vast S3 uploads by providing direct file system access to the containerized S3 service.
 
 **Default Variables (typically no changes needed for local deployment):**
-- `AWS_ACCESS_KEY_ID=test` (for LocalStack)
-- `AWS_SECRET_ACCESS_KEY=test` (for LocalStack)
-- `AWS_ENDPOINT_URL=http://localstack:4566`
+- `AWS_ACCESS_KEY_ID=test` (for Vast S3)
+- `AWS_SECRET_ACCESS_KEY=test` (for Vast S3)
+- `AWS_ENDPOINT_URL=http://vast-s3:4566`
 - `COSMOS_EMBED_URI=http://cosmos-embed:8000`
 - `GUNICORN_PORT=8888`
 
@@ -227,10 +238,10 @@ make test-integration-up
 ```
 
 This command:
-- Starts Milvus vector database with etcd
+- Starts VastDB vector database with etcd
 - Launches the CE1 OSS PyTorch service with the local model files
 - Starts Visual Search API service
-- Launches LocalStack S3-compatible storage
+- Launches Vast S3 S3-compatible storage
 - Waits for all services to become healthy
 
 **Important Notes**:
@@ -249,9 +260,9 @@ cd deploy/standalone && docker compose -f docker-compose.build.yml up -d
 [+] Running 1/1
  ✔ validate-env Pulled                                                                                                                     1.5s
 [+] Running 7/7
- ✔ Container milvus-etcd                Healthy                                                                                            1.2s
- ✔ Container localstack                 Healthy                                                                                            1.2s
- ✔ Container milvus                     Healthy                                                                                            4.9s
+ ✔ Container vastdb-etcd                Healthy                                                                                            1.2s
+ ✔ Container vast-s3                 Healthy                                                                                            1.2s
+ ✔ Container vastdb                     Healthy                                                                                            4.9s
  ✔ Container standalone-validate-env-1  Exited                                                                                             0.7s
  ✔ Container standalone-cosmos-embed-cache-init-1 Exited                                                                                   0.7s
  ✔ Container cosmos-embed               Healthy                                                                                           64.2s
@@ -261,9 +272,9 @@ cd deploy/standalone && docker compose -f docker-compose.build.yml up -d
 Waiting for services to be ready...
 This may take a few minutes for GPU services to initialize...
 python scripts/wait_for_services.py
-INFO:__main__:Waiting for services: milvus, cosmos-embed, visual-search
-INFO:__main__:Checking milvus at http://localhost:9091/healthz
-INFO:__main__:milvus is ready
+INFO:__main__:Waiting for services: vastdb, cosmos-embed, visual-search
+INFO:__main__:Checking vastdb at http://localhost:9091/healthz
+INFO:__main__:vastdb is ready
 INFO:__main__:Checking cosmos-embed at http://localhost:9000/v1/health/ready
 INFO:__main__:cosmos-embed is ready
 INFO:__main__:Checking visual-search at http://localhost:8888/health
@@ -371,9 +382,9 @@ make ingest-msrvtt-small
 
 **Note**: This command ingests a small subset of videos for quick testing. The full ingestion process:
 1. Downloads videos from the dataset
-2. Uploads to LocalStack S3 storage
+2. Uploads to Vast S3 S3 storage
 3. Processes videos through the embedding pipeline
-4. Indexes embeddings in Milvus
+4. Indexes embeddings in VastDB
 
 **Time Estimate**: 5-10 minutes for 100 videos, depending on your system.
 
@@ -446,8 +457,8 @@ For detailed service management, including viewing logs, restarting individual s
 | Visual Search API | http://localhost:8888 | REST API for search operations |
 | API Documentation | http://localhost:8888/v1/docs | Interactive API docs (Swagger) |
 | CE1 OSS | http://localhost:9000 | Embedding service |
-| Milvus Database | localhost:19530 | Vector database (internal) |
-| LocalStack S3 | http://localhost:4566 | S3-compatible storage (internal) |
+| VastDB Database | localhost:19530 | Vector database (internal) |
+| Vast S3 S3 | http://localhost:4566 | S3-compatible storage (internal) |
 
 ## Troubleshooting
 

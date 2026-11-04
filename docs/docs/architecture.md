@@ -1,8 +1,14 @@
 # CDS 1.2.0 architecture
 
-CDS is a customer-managed blueprint: the visual-search API coordinates ingestion and search, the CE1 OSS service produces embeddings, and Milvus stores vectors and collection metadata.
+CDS is a customer-managed blueprint: the visual-search API coordinates ingestion and search, the CE1 OSS service produces embeddings, and a vector backend stores vectors and collection metadata.
 
-![CDS architecture: CLI/API, CDS API, CE1 OSS, Milvus and object storage](images/cds-architecture.jpg)
+This branch uses **VastDB** for vectors/metadata and **Vast S3** for media
+(see [VastDB architecture](vastdb-architecture.md) and
+[VastDB vector store](vastdb-vector-store.md)).
+
+Stock NVIDIA CDS diagrams that show VastDB do not apply to this branch.
+
+![CDS architecture reference image may still show VastDB in upstream artwork](images/cds-architecture.jpg)
 
 For supported media sources and private-storage configuration, see [ingestion source settings](import-url-security.md).
 
@@ -10,7 +16,7 @@ For supported media sources and private-storage configuration, see [ingestion so
 
 1. A client calls CDS through the customer's access-control and TLS boundary. A direct CE1 endpoint, if exposed, needs the same protection.
 2. CDS sends text or video embedding requests to CE1. Text bypasses video decoding. Video is materialized, checked by system `ffprobe`, GPU-decoded with PyNvVideoCodec, uniformly sampled to eight frames and resized for the 224p model. The service returns normalized 256-dimensional embeddings.
-3. CDS writes or searches vectors and metadata in Milvus. Collection metadata lives in Milvus's `_collection_registry`; this release does not require a separate PostgreSQL metadata service.
+3. CDS writes or searches vectors and metadata in VastDB. Collection metadata lives in VastDB `_collection_registry`; this release does not require a separate PostgreSQL metadata service.
 4. Media may come from base64 input or supported URLs, including presigned object-storage URLs. Optional text and S3 Parquet imports use separate CDS-side validation. Media CDN integration is optional, not required for basic ingestion/search.
 
 ## Model and deployment boundaries
