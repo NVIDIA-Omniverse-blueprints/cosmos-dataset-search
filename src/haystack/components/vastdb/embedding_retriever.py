@@ -13,10 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Embedding retriever Haystack 2.x implementation for Milvus.
-
-Taken from:
-"""
+"""Embedding retriever for VastDB vector tables."""
 
 from typing import Any, Dict, List, Optional
 
@@ -25,43 +22,27 @@ from haystack import component
 from haystack.core.serialization import default_from_dict, default_to_dict
 from haystack.dataclasses import Document
 
-from src.haystack.components.milvus.document_store import MilvusDocumentStore
+from src.haystack.components.vastdb.document_store import VastDocumentStore
 
 
 @component
-class MilvusEmbeddingRetriever:
-    """
-    Uses a vector similarity metric to retrieve documents from the MilvusDocumentStore.
-
-    Needs to be connected to the MilvusDocumentStore to run.
-    """
+class VastEmbeddingRetriever:
+    """Retrieve documents from VastDB using native vector distance functions."""
 
     def __init__(
         self,
         *,
-        document_store: MilvusDocumentStore,
+        document_store: VastDocumentStore,
         filters: Optional[Dict[str, Any]] = None,
         top_k: int = 10,
         reconstruct: bool = False,
     ):
-        """
-        Create the MilvusEmbeddingRetriever component.
+        if not isinstance(document_store, VastDocumentStore):
+            raise ValueError("document_store must be an instance of VastDocumentStore")
 
-        :param document_store: An instance of MilvusDocumentStore.
-        :param filters: Filters applied to the retrieved Documents. Defaults to None.
-            Filters are applied during the approximate kNN search to ensure that top_k matching documents are returned.
-        :param top_k: Maximum number of Documents to return, defaults to 10
-        :param reconstruct: Whether to return the embedding of the retrieved documents. Defaults to False.
-        :raises ValueError: If `document_store` is not an instance of MilvusDocumentStore.
-        """
-        if not isinstance(document_store, MilvusDocumentStore):
-            msg = "document_store must be an instance of MilvusDocumentStore"
-            raise ValueError(msg)
-
-        top_k = int(top_k)
         self._document_store = document_store
         self._filters = filters or {}
-        self._top_k = top_k
+        self._top_k = int(top_k)
         self._reconstruct = reconstruct
 
     def to_dict(self) -> Dict[str, Any]:
@@ -74,9 +55,9 @@ class MilvusEmbeddingRetriever:
         )
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MilvusEmbeddingRetriever":
+    def from_dict(cls, data: Dict[str, Any]) -> "VastEmbeddingRetriever":
         init_parameters = data["init_parameters"]
-        document_store = MilvusDocumentStore.from_dict(
+        document_store = VastDocumentStore.from_dict(
             init_parameters["document_store"]
         )
         return default_from_dict(
@@ -100,28 +81,18 @@ class MilvusEmbeddingRetriever:
         filters: Dict = {},
         reconstruct: Optional[bool] = None,
     ) -> Dict[str, List[List[Document]]]:
-        """
-        Retrieve documents using a vector similarity metric.
-
-        :param index_name: collection name to query.
-        :param query_embeddings: Batch of embeddings to query.
-        :param top_k: number of nearest neighbors to return.
-        :param search_params: search params specific to different types of indices, for example nprobe.
-        :param filters: extra filters for the search.
-        :param reconstruct: whether to return embeddings.
-        :return: List of Document similar to each of `query_embeddings`.
-        """
         docs = []
-        # (TODO francesco: avoid loop)
         for embedding in query_embeddings:
             docs.append(
                 self._document_store._embedding_retrieval(
                     collection_name=index_name,
                     query_embedding=np.array(embedding),
-                    filters=filters,
+                    filters=filters or self._filters,
                     search_params=search_params,
                     top_k=top_k or self._top_k,
-                    return_embedding=reconstruct or self._reconstruct,
+                    return_embedding=reconstruct
+                    if reconstruct is not None
+                    else self._reconstruct,
                 )
             )
         return {"documents": docs}

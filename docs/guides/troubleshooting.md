@@ -232,7 +232,7 @@ make test-integration-logs
 **Problem**: Video ingestion returns errors or fails silently
 
 **Resolution**:
-- For LocalStack: Verify videos exist in bucket:
+- For Vast S3: Verify videos exist in bucket:
   ```bash
   # Using boto3
   python -c "import boto3; s3=boto3.client('s3',endpoint_url='http://localhost:4566',aws_access_key_id='test',aws_secret_access_key='test'); print(s3.list_objects_v2(Bucket='cosmos-test-bucket',Prefix='videos/'))"

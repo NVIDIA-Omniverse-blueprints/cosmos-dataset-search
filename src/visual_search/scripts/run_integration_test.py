@@ -34,7 +34,7 @@ class TestCases:
     def run(self) -> None:
         """Run tests."""
 
-        pipeline = "c_radio_image_search_milvus"
+        pipeline = "c_radio_image_search_vastdb"
         collection_name = "Test Collection"
 
         collection_id = None

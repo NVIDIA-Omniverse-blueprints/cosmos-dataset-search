@@ -73,8 +73,8 @@ cat << EOF > ~/.config/cds/config
 api_endpoint = https://$VS_API/api
 EOF
 
-### Validate the server is up and running by querying that the cosmos_video_search_milvus pipeline is available.
+### Validate the server is up and running by querying that the cosmos_video_search_vastdb pipeline is available.
 echo "Pipelines:"
-cds pipelines list | grep 'cosmos_video_search_milvus'
+cds pipelines list | grep 'cosmos_video_search_vastdb'
 
 echo CVDS blueprint running at $CLUSTER_NAME. Installation complete.

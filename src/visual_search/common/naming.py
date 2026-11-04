@@ -13,6 +13,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Milvus components for Haystack integration.
-""" 
+"""Safe collection / table name helpers for vector backends."""
+
+from __future__ import annotations
+
+import re
+
+
+def create_safe_name(name: str) -> str:
+    """
+    Create a backend-safe collection or table name.
+
+    Replaces non-alphanumeric characters with underscores and prepends ``a``
+    if the name would otherwise start with a digit.
+    """
+    if not name:
+        raise ValueError("Input name cannot be empty.")
+    safe_name = re.sub(r"[^0-9a-zA-Z_]", "_", str(name))
+    if not re.match(r"^[a-zA-Z_]", safe_name):
+        safe_name = f"a{safe_name}"
+    if len(safe_name) > 255:
+        safe_name = safe_name[:255]
+    return safe_name

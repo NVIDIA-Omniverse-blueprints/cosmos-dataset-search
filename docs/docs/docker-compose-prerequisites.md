@@ -174,19 +174,19 @@ Run `docker login nvcr.io` and continue with `make build-docker`. Authentication
 
 ## Network Requirements
 
-### LocalStack Hostname Mapping
+### Vast S3 Hostname Mapping
 
-**Critical**: Docker Compose deployment requires a hostname mapping for LocalStack (S3-compatible storage).
+**Critical**: Docker Compose deployment requires a hostname mapping for Vast S3 (S3-compatible storage).
 
-To ensure that your system recognizes "localstack" as an alias for localhost, you must add a hostname mapping to your `/etc/hosts` file. The following command appends the required entry to `/etc/hosts` (requires sudo privileges):
+To ensure that your system recognizes "vast-s3" as an alias for localhost, you must add a hostname mapping to your `/etc/hosts` file. The following command appends the required entry to `/etc/hosts` (requires sudo privileges):
 
 ```bash
-echo "127.0.0.1   localstack" | sudo tee -a /etc/hosts
+echo "127.0.0.1   vast-s3" | sudo tee -a /etc/hosts
 ```
 
 Verify the mapping:
 ```bash
-grep localstack /etc/hosts
+grep vast-s3 /etc/hosts
 ```
 
 **Without this mapping, data ingestion and storage operations will fail.**
@@ -199,8 +199,8 @@ CDS requires the following ports to be available. Any port conflicts must be res
 |-------|----------------------|----------------------------|
 | 8888  | Visual Search API    | REST API endpoint          |
 | 9000  | CE1 OSS service      | Embedding service          |
-| 19530 | Milvus               | Vector database            |
-| 4566  | LocalStack           | S3-compatible storage      |
+| 19530 | VastDB               | Vector database            |
+| 4566  | Vast S3           | S3-compatible storage      |
 
 **Check for port conflicts:**
 

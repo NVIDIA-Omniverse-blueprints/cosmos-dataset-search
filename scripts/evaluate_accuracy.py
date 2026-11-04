@@ -47,9 +47,9 @@ LOGGER = logging.getLogger("benchmark-accuracy")
 
 DEFAULT_COMPOSE = str(Path("deploy/standalone/docker-compose.build.yml").resolve())
 DEFAULT_PROFILE = "local"
-DEFAULT_PIPELINE = "cosmos_video_search_milvus"
+DEFAULT_PIPELINE = "cosmos_video_search_vastdb"
 DEFAULT_BUCKET = "cosmos-test-bucket"
-DEFAULT_S3_ENDPOINT = "http://localstack:4566"
+DEFAULT_S3_ENDPOINT = "http://vast-s3:4566"
 RELEVANCE_CHOICES = ["instance", "class"]
 
 # ---------------------------------------------------------------------------
@@ -283,7 +283,7 @@ def upload_unique_videos_to_s3(
     try:
         s3.head_bucket(Bucket=bucket)
     except Exception:
-        # LocalStack special-case for us-east-1
+        # Vast S3 special-case for us-east-1
         if (os.environ.get("AWS_DEFAULT_REGION", "us-east-1") or "us-east-1") == "us-east-1":
             s3.create_bucket(Bucket=bucket)
         else:
@@ -426,8 +426,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--config", default=None, help="Optional dataset config name (e.g. test_1k)")
     parser.add_argument("--top-k", type=int, default=10, help="Top-K for retrieval")
     parser.add_argument("--limit", type=int, default=0, help="Optional limit on number of queries for a quick run (0=all)")
-    parser.add_argument("--bucket", default=DEFAULT_BUCKET, help="LocalStack S3 bucket name")
-    parser.add_argument("--s3-endpoint", default=DEFAULT_S3_ENDPOINT, help="S3 endpoint URL (LocalStack)")
+    parser.add_argument("--bucket", default=DEFAULT_BUCKET, help="Vast S3 S3 bucket name")
+    parser.add_argument("--s3-endpoint", default=DEFAULT_S3_ENDPOINT, help="S3 endpoint URL (Vast S3)")
     parser.add_argument("--profile", default=DEFAULT_PROFILE, help="Client profile to use")
     parser.add_argument("--pipeline-id", default=DEFAULT_PIPELINE, help="Visual-search pipeline id to query")
     parser.add_argument("--id-field", default="video_id", help="Column name for video ids")
@@ -465,7 +465,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.dataset_file is None:
         try_import_hf_datasets()
 
-    # Ensure env for LocalStack S3 (so presigned URLs use localstack host)
+    # Ensure env for Vast S3 S3 (so presigned URLs use vast-s3 host)
     os.environ.setdefault("AWS_ACCESS_KEY_ID", "test")
     os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "test")
     os.environ.setdefault("AWS_DEFAULT_REGION", "us-east-1")

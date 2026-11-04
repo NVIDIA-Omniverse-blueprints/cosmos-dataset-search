@@ -7,12 +7,12 @@ NVIDIA Cosmos Dataset Search (CDS) is a comprehensive platform for semantic sear
 ### Search and Retrieval
 - Multimodal semantic search with text and video queries
 - GPU-accelerated embedding generation using NVIDIA CE1 OSS service
-- Fast vector similarity search powered by Milvus with NVIDIA cuVS acceleration
+- Fast vector similarity search powered by VastDB with NVIDIA cuVS acceleration
 - Support for multiple collections and cross-modal retrieval
 
 ### Data Management
 - Automated video ingestion pipeline with frame extraction and metadata indexing
-- S3-compatible object storage (LocalStack, MinIO, AWS S3)
+- S3-compatible object storage (Vast S3, MinIO, AWS S3)
 - Batch and incremental data ingestion with Ray-based parallel processing
 - Support for various video formats and frame rates
 
@@ -46,15 +46,19 @@ the offline benchmark tools; `make install-python` includes all extras.
 
 ### Integration and Orchestration Layer
 - **Visual Search Service** - FastAPI-based REST API orchestrating ingestion and search operations
-- **Milvus Vector Database** - GPU-accelerated vector storage and similarity search with NVIDIA cuVS
-- **Object Storage** - S3-compatible storage for video files, frames, and metadata (LocalStack, MinIO, or AWS S3)
+- **Vector Database** - **VastDB** (`cosmos_video_search_vastdb` pipeline)
+- **Object Storage** - S3-compatible storage for video files, frames, and metadata (**Vast S3** (S3-compatible))
 
-The Visual Search service coordinates CE1 embedding generation, Milvus vector
+The Visual Search service coordinates CE1 embedding generation, vector
 storage, and S3-compatible object storage for ingestion and retrieval requests.
+
+VastDB + Vast S3 setup:
+[VastDB vector store](docs/docs/vastdb-vector-store.md) and the
+[technical blog](docs/blog/cds-on-vastdb.md).
 
 ## Technical Diagram
 
-<img src="docs/docs/images/cds-architecture.jpg" alt="CDS architecture: CLI/API, CDS API, CE1 OSS, Milvus and object storage" width="700" />
+<img src="docs/docs/images/cds-architecture.jpg" alt="CDS architecture: CLI/API, CDS API, CE1 OSS, VastDB and object storage" width="700" />
 
 ## Workflow
 

@@ -709,7 +709,7 @@ def latency_test(
                     if not math.isnan(embed_avg) and not math.isnan(embed_baseline_avg)
                     else float("nan")
                 )
-                milvus_avg = (
+                vastdb_avg = (
                     (avg_lat - vs_baseline_avg - embed_avg)
                     if (
                         not math.isnan(avg_lat)
@@ -727,8 +727,8 @@ def latency_test(
                 report_writer.writerow(
                     [
                         "breakdown",
-                        "milvus_search_avg_sec",
-                        f"{max(0.0, milvus_avg):.6f}",
+                        "vastdb_search_avg_sec",
+                        f"{max(0.0, vastdb_avg):.6f}",
                     ]
                 )
 
@@ -805,7 +805,7 @@ def latency_test(
             if not math.isnan(embed_avg) and not math.isnan(embed_baseline_avg)
             else float("nan")
         )
-        milvus_avg = (
+        vastdb_avg = (
             (avg_lat - vs_baseline_avg - embed_avg)
             if (
                 not math.isnan(avg_lat)
@@ -817,7 +817,7 @@ def latency_test(
         print("Breakdown (approx)")
         print(f"  travel (avg s): {vs_baseline_avg:.3f}")
         print(f"  cosmos-embed (avg s): {embed_avg:.3f}")
-        print(f"  milvus search (avg s): {max(0.0, milvus_avg):.3f}")
+        print(f"  vastdb search (avg s): {max(0.0, vastdb_avg):.3f}")
 
 
 def parse_cli() -> argparse.Namespace:

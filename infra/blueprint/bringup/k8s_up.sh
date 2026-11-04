@@ -77,51 +77,7 @@ else
     --values values.yaml
 fi
 
-helm repo add milvus https://zilliztech.github.io/milvus-helm
-
-envsubst < milvus-values.yaml | helm upgrade --install milvus milvus/milvus \
-  --version 4.2.58 \
-  --values - \
-  --set image.all.repository=milvusdb/milvus \
-  --set image.all.tag=v2.4.4
-
-# Waiting for milvus-querynode so we can replace it, maybe not necessary.
-until kubectl get deployment milvus-querynode >/dev/null 2>&1; do sleep 5; done
-
-kubectl patch deployment milvus-querynode -p '{
-  "spec": {
-    "replicas": 1,
-    "strategy": {
-      "type": "RollingUpdate",
-      "rollingUpdate": { "maxSurge": 0, "maxUnavailable": 1 }
-    },
-    "template": {
-      "spec": {
-        "nodeSelector": { "role": "milvus-query", "memory-type": "high" },
-        "tolerations": [
-          { "key": "dedicated", "operator": "Equal", "value": "querynode", "effect": "NoExecute" }
-        ],
-        "containers": [{
-          "name": "querynode",
-          "image": "milvusdb/milvus:v2.4.4",
-          "env": [
-            { "name": "GOGC", "value": "10" },
-            { "name": "GOMEMLIMIT", "value": "110GiB" },
-            { "name": "KNOWHERE_ENABLE_GPU", "value": "false" },
-            { "name": "MILVUS_ENABLE_GPU", "value": "false" },
-            { "name": "KNOWHERE_GPU_MEM_POOL_SIZE", "value": "0" }
-          ],
-          "resources": {
-            "limits": {},
-            "requests": {}
-          }
-        }]
-      }
-    }
-  }
-}'
-
-kubectl rollout status deployment/milvus-querynode --timeout=7200s
+# Vector storage is VastDB (external). Configure vastdb.* in values.yaml.
 
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout privateKey.key -out certificate.crt -subj "/C=US/ST=Texas/L=Austin/O=NVIDIA/OU=CVDS/CN=self-signed-tls"
 kubectl create secret tls visual-search-tls --key privateKey.key --cert certificate.crt --dry-run=client -o yaml | kubectl apply -f -

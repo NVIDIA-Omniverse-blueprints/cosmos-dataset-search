@@ -21,8 +21,8 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
-from src.haystack.components.milvus.document_store import ID_FIELD, VECTOR_FIELD
-from src.haystack.components.milvus.schema_utils import MetadataConfig, MetadataField
+from src.haystack.components.vastdb.document_store import ID_FIELD, VECTOR_FIELD
+from src.haystack.components.schema_utils import MetadataConfig, MetadataField
 from src.visual_search.v1.apis.document_indexing import create_parquet_table
 
 

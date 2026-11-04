@@ -4,33 +4,33 @@
 
 This document provides comprehensive performance benchmarks for the Cosmos Video Dataset Search (CVDS) system, covering three key performance areas:
 
-1. **Bulk Ingestion Performance**: GPU-accelerated embedding ingestion using Milvus GPU_CAGRA indexing
+1. **Bulk Ingestion Performance**: GPU-accelerated embedding ingestion using VastDB GPU_CAGRA indexing
 2. **Video Ingestion Performance**: End-to-end video processing and embedding generation
 3. **Text Search Latency Performance**: Query response times for semantic search
 
-All benchmarks were conducted on NVIDIA L40 GPU hardware with optimized Milvus configurations.
+All benchmarks were conducted on NVIDIA L40 GPU hardware with optimized VastDB configurations.
 
-> **Note:** The benchmark uses the optimized Milvus configuration from [`deploy/standalone/milvus_l40_standalone_optimized.yaml`](../../deploy/standalone/milvus_l40_standalone_optimized.yaml).
-To apply this configuration, ensure it is mounted in [`deploy/standalone/docker-compose.build.yml`](../../deploy/standalone/docker-compose.build.yml) under the `milvus` service (using a `volumes` entry). For example:
+> **Note:** The benchmark uses the optimized VastDB configuration from [`deploy/standalone/vastdb_l40_standalone_optimized.yaml`](../../deploy/standalone/vastdb_l40_standalone_optimized.yaml).
+To apply this configuration, ensure it is mounted in [`deploy/standalone/docker-compose.build.yml`](../../deploy/standalone/docker-compose.build.yml) under the `vastdb` service (using a `volumes` entry). For example:
 
 ```yaml
 services:
-  milvus:
+  vastdb:
     # ...
     volumes:
-      - ./deploy/standalone/milvus_l40_standalone_optimized.yaml:/milvus/configs/milvus.yaml
+      - ./deploy/standalone/vastdb_l40_standalone_optimized.yaml:/vastdb/configs/vastdb.yaml
 ```
 
-This ensures the Milvus instance uses the performance-optimized configuration for the benchmarks described below.
+This ensures the VastDB instance uses the performance-optimized configuration for the benchmarks described below.
 
 
 ## Reference Documentation
 
 For more information about the technologies used in these benchmarks:
 
-- **GPU_CAGRA Index**: [Milvus GPU_CAGRA Documentation](https://milvus.io/docs/gpu-cagra.md) - Official documentation for GPU_CAGRA index configuration and usage
-- **GPU_CAGRA Technical Overview**: [Milvus Introduces GPU Index CAGRA](https://zilliz.com/blog/Milvus-introduces-GPU-index-CAGRA) - Technical deep dive into CAGRA architecture and performance
-- **Milvus GPU Configuration**: [Install Milvus Standalone with Docker Compose (GPU)](https://milvus.io/docs/install_standalone-docker-compose-gpu.md) - GPU setup and configuration guide
+- **GPU_CAGRA Index**: [VastDB GPU_CAGRA Documentation](https://vastdb.io/docs/gpu-cagra.md) - Official documentation for GPU_CAGRA index configuration and usage
+- **GPU_CAGRA Technical Overview**: [VastDB Introduces GPU Index CAGRA](https://zilliz.com/blog/VastDB-introduces-GPU-index-CAGRA) - Technical deep dive into CAGRA architecture and performance
+- **VastDB GPU Configuration**: [Install VastDB Standalone with Docker Compose (GPU)](https://vastdb.io/docs/install_standalone-docker-compose-gpu.md) - GPU setup and configuration guide
 - **CAGRA Parameter Tuning**: [cuVS Automated Tuning Guide](https://docs.rapids.ai/api/cuvs/nightly/tuning_guide/) - Guide for automated hyper-parameter optimization (HPO) of CAGRA graph parameters using GPU-accelerated tuning
 - **Comparing Vector Indexes**: [cuVS Comparing Performance of Vector Indexes](https://docs.rapids.ai/api/cuvs/nightly/comparing_indexes/) - Methodology for recall-aware performance comparison and benchmarking of vector search indexes
 
@@ -50,11 +50,11 @@ For more information about the technologies used in these benchmarks:
 
 | Component | Version |
 |-----------|---------|
-| **Milvus** | 2.4.4-gpu (standalone mode) |
+| **VastDB** | 2.4.4-gpu (standalone mode) |
 | **CUDA** | 13.0 |
 | **NVIDIA Driver** | 580.65.06 |
 | **Index Type** | GPU_CAGRA |
-| **Storage Backend** | LocalStack S3 (development) |
+| **Storage Backend** | Vast S3 S3 (development) |
 
 ---
 
@@ -62,7 +62,7 @@ For more information about the technologies used in these benchmarks:
 
 ### Overview
 
-Bulk ingestion benchmarks measure the throughput of loading pre-computed embeddings into Milvus with GPU_CAGRA indexing. This is useful for initial dataset loading or batch updates.
+Bulk ingestion benchmarks measure the throughput of loading pre-computed embeddings into VastDB with GPU_CAGRA indexing. This is useful for initial dataset loading or batch updates.
 
 ### How to Run Bulk Ingestion Benchmarks
 
@@ -99,7 +99,7 @@ python3 scripts/evals/bulk_ingestion_performance/generate_data.py \
 Use the `run_benchmark.py` script to upload data to S3 and measure ingestion throughput:
 
 ```bash
-# Full benchmark (upload to localstack + create collection + ingest)
+# Full benchmark (upload to vast-s3 + create collection + ingest)
 python3 scripts/evals/bulk_ingestion_performance/run_benchmark.py \
   --parquet-file benchmark_data/embeddings_10m.parquet \
   --num-vectors 10000000
@@ -120,7 +120,7 @@ python3 scripts/evals/bulk_ingestion_performance/run_benchmark.py \
 ```
 
 **The benchmark will:**
-1. Upload parquet file to LocalStack S3 (if not skipped)
+1. Upload parquet file to Vast S3 S3 (if not skipped)
 2. Create a GPU_CAGRA collection (if not skipped)
 3. Initiate bulk insert via `/v1/insert-data` API
 4. Monitor progress every 5 seconds
@@ -133,7 +133,7 @@ python3 scripts/evals/bulk_ingestion_performance/run_benchmark.py \
 - **Segment Size**: 2GB (optimal for GPU_CAGRA indexing)
 - **Build Parallel**: 1 (CUVS team recommendation for single GPU)
 - **Concurrent Import Tasks**: 16 (balanced for S3 I/O)
-- **Storage V2**: Disabled (required for Milvus 2.4.4 bulk import compatibility)
+- **Storage V2**: Disabled (required for VastDB 2.4.4 bulk import compatibility)
 
 ### 10 Million Embeddings Benchmark
 
@@ -176,7 +176,7 @@ When measured independently (without S3 I/O overhead), the GPU_CAGRA indexing pe
 The system uses a conservative GPU memory allocation strategy:
 
 - **CE1 OSS service**: ~12 GB (embedding model)
-- **Milvus GPU Pool**: 13.4 GB active (configured: 16GB init / 30GB max)
+- **VastDB GPU Pool**: 13.4 GB active (configured: 16GB init / 30GB max)
 - **Available Headroom**: ~28 GB unused
 
 ## Performance Analysis
@@ -184,7 +184,7 @@ The system uses a conservative GPU memory allocation strategy:
 ### Current Scenario
 
 1. **S3 I/O Throughput** (Primary Bottleneck)
-   - LocalStack adds significant overhead compared to production S3
+   - Vast S3 adds significant overhead compared to production S3
    - Data loading phase dominates total time (61%)
    - Network transfer and deserialization overhead
 
@@ -195,7 +195,7 @@ The system uses a conservative GPU memory allocation strategy:
 
 1. **Production S3 Backend**
    - **Expected Improvement**: 2-3x throughput
-   - Replace LocalStack with AWS S3 or MinIO cluster
+   - Replace Vast S3 with AWS S3 or MinIO cluster
    - Reduces I/O bottleneck significantly
 
 2. **Increase Segment Size**
@@ -239,7 +239,7 @@ The system uses a conservative GPU memory allocation strategy:
 
 ### Overview
 
-Video ingestion benchmarks measure the end-to-end performance of processing video files, generating embeddings using CE1 OSS service, and storing them in Milvus. This represents the real-world use case of ingesting video datasets.
+Video ingestion benchmarks measure the end-to-end performance of processing video files, generating embeddings using CE1 OSS service, and storing them in VastDB. This represents the real-world use case of ingesting video datasets.
 
 ### How to Run Video Ingestion Benchmarks
 
@@ -297,7 +297,7 @@ Create a new collection for video ingestion:
 
 ```bash
 cds collections create \
-  --pipeline cosmos_video_search_milvus \
+  --pipeline cosmos_video_search_vastdb \
   --name "MSR-VTT Performance Test"
 ```
 
@@ -388,7 +388,7 @@ python3 scripts/evals/video_ingestion_performance/url_ingestion.py \
 
 1. **Embedding Generation Dominates**: The legacy embedding service takes ~2.75s per batch (64 videos), which is **87.6%** of total processing time. Re-measure this for CE1 OSS.
 
-2. **CDS API Overhead is Minimal**: The CDS API overhead (video download from HTTP, Milvus insertion, orchestration) is only ~0.39s per batch (**12.4%** of total time), showing efficient pipeline implementation.
+2. **CDS API Overhead is Minimal**: The CDS API overhead (video download from HTTP, VastDB insertion, orchestration) is only ~0.39s per batch (**12.4%** of total time), showing efficient pipeline implementation.
 
 3. **Batch Processing is Efficient**: Processing 64 videos in ~3.14s achieves high GPU utilization on the embedding model, with minimal per-video overhead.
 
@@ -424,7 +424,7 @@ Sample of per-batch performance :
    - Recommendation: Test batch sizes 16, 32, 64 to find optimal balance
 
 2. **Dedicated GPU for Embedding**
-   - Current: The embedding service shares an L40 GPU with Milvus
+   - Current: The embedding service shares an L40 GPU with VastDB
    - Alternative: Dedicated GPU for embeddings
    - Benefit: Eliminate GPU contention, potentially 20-30% throughput improvement
 
@@ -504,14 +504,14 @@ python3 scripts/evals/video_ingestion_performance/latency_test.py \
 | Component | Avg Latency | Percentage |
 |-----------|-------------|------------|
 | **Total End-to-End** | 0.317 seconds | 100% |
-| **Milvus Search** | 0.305 seconds | 96.2% |
+| **VastDB Search** | 0.305 seconds | 96.2% |
 | **Legacy Embedding Service** | 0.007 seconds | 2.2% |
 | **Network/API Overhead** | 0.004 seconds | 1.3% |
 | **Visual Search API Baseline** | 0.004 seconds | 1.3% |
 
 **Key Insights:**
 
-1. **Milvus GPU Search Dominates**: The GPU_CAGRA index search takes 96.2% of total latency (0.305s), which is expected for a 10M vector collection.
+1. **VastDB GPU Search Dominates**: The GPU_CAGRA index search takes 96.2% of total latency (0.305s), which is expected for a 10M vector collection.
 
 2. **Embedding Generation Was Fast in the Legacy Run**: Re-measure text embedding latency with CE1 OSS before drawing a current performance conclusion.
 
@@ -566,7 +566,7 @@ Sample query latencies from the benchmark:
 
 ## 4. Configuration Parameters
 
-### Key Milvus Settings
+### Key VastDB Settings
 
 ```yaml
 # GPU Memory Pool (L40 48GB)
@@ -619,7 +619,7 @@ indexNode:
 ### GPU Memory Capacity
 
 The L40's 48GB VRAM can accommodate approximately:
-- **With 30GB allocated to Milvus**: ~25-30M vectors (256-dim) with GPU_CAGRA index
+- **With 30GB allocated to VastDB**: ~25-30M vectors (256-dim) with GPU_CAGRA index
 - **Theoretical maximum**: ~40M vectors before requiring batch processing
 
 ### Distributed vs. Standalone
@@ -652,7 +652,7 @@ The L40's 48GB VRAM can accommodate approximately:
 ### For Development/Testing
 - **Current configuration is optimal**
 - Focus on application development
-- LocalStack S3 is sufficient
+- Vast S3 S3 is sufficient
 
 ### For Production Deployment
 
@@ -676,4 +676,4 @@ The L40's 48GB VRAM can accommodate approximately:
 
 *Last Updated: October 24, 2025*  
 *Benchmark Version: 1.0*  
-*Configuration: milvus_l40_standalone_optimized.yaml*
+*Configuration: vastdb_l40_standalone_optimized.yaml*

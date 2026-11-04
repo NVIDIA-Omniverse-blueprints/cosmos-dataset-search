@@ -18,7 +18,7 @@
 End‑to‑end tests for the Collections API.
 
 A lightweight in‑memory FakeStore is injected (via an autouse fixture) so that
-`db_models._global_store()` resolves without touching Milvus or a Haystack
+`db_models._global_store()` resolves without touching VastDB or a Haystack
 pipeline graph.
 """
 

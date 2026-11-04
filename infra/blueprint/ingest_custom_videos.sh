@@ -86,7 +86,7 @@ echo "{ \"tags\": {
   \"storage-template\": \"s3://$CUSTOM_S3_BUCKET_NAME/$CUSTOM_S3_FOLDER/{{filename}}\",
   \"storage-secrets\": \"$SECRETS_NAME\"
 } }" > custom_video_bucket_meta.json
-COLLECTION=$(cds collections create --pipeline cosmos_video_search_milvus --config-yaml custom_video_bucket_meta.json --name "video")
+COLLECTION=$(cds collections create --pipeline cosmos_video_search_vastdb --config-yaml custom_video_bucket_meta.json --name "video")
 COLLECTION_ID=$(echo "$COLLECTION" | awk -F'"' '/"id":/{print $4}')
 echo $COLLECTION_ID
 

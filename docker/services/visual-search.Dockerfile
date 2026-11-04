@@ -36,7 +36,7 @@ COPY --chown=appuser:appuser ./OSS_SOURCES.txt /app/OSS_SOURCES.txt
 EXPOSE 8000
 
 # Health check - use GUNICORN_PORT environment variable or default to 8000
-# Increased timeout to 30s to handle slow Milvus collection metadata operations
+# Increased timeout to 30s to handle slow VastDB collection metadata operations
 HEALTHCHECK --interval=30s --timeout=30s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:${GUNICORN_PORT:-8000}/health || exit 1
 

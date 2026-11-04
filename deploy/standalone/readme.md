@@ -136,7 +136,7 @@ The following is an example to ingest local video files.
 
 1. Create a new collection:
 ```bash
-cds collections create --pipeline cosmos_video_search_milvus --name my-video-collection --config-yaml /path/to/cvfactory/src/visual_search/client/datasets/simple.yaml
+cds collections create --pipeline cosmos_video_search_vastdb --name my-video-collection --config-yaml /path/to/cvfactory/src/visual_search/client/datasets/simple.yaml
 ```
 
 2. Optional, obtain the ID of the new collection by listing all collections. Otherwise, the `create` command above should have printed this ID.
@@ -255,7 +255,7 @@ The below message is returned upon successfully setting the secret in the servic
 1. Create the collection using the yaml file created earlier:
 
 ```bash
-cds collections create --pipeline cosmos_video_search_milvus --name my-video-collection-s3 --config-yaml /path/for/s3_ingest.yaml
+cds collections create --pipeline cosmos_video_search_vastdb --name my-video-collection-s3 --config-yaml /path/for/s3_ingest.yaml
 ```
 
 2. Optional, obtain the ID of the new collection by listing all collections. Otherwise, the `create` command above should have printed this ID.
@@ -315,12 +315,12 @@ docker compose down
 
 ## Additional Information
 
-To remove the persistent volumes for Postgres and Milvus, and start from scratch, run the following commands:
+To remove the persistent volumes for Postgres and VastDB, and start from scratch, run the following commands:
 
 ```bash
 docker compose down
 docker volume ls # lists all the persistent volumes to be used by docker compose
 docker volume rm visual_search_postgres_data # check this is the same name shown from previous command
-docker volume rm visual_search_milvus_data # check this is the same name shown from previous command
+docker volume rm visual_search_vastdb_data # check this is the same name shown from previous command
 ```
 This may be necessary if the database format changes or gets corrupted when debugging or developing.

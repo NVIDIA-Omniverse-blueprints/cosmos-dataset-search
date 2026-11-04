@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Custom document writer for writing to multiple collections in a thread-safe manner."""
+"""Haystack document writer for VastDB collections."""
 
 from typing import Any, Dict, List, Optional
 import logging
@@ -21,16 +21,16 @@ import logging
 from haystack import Document, component, default_from_dict, default_to_dict
 from haystack.document_stores.types import DuplicatePolicy
 
-from src.haystack.components.milvus.document_store import MilvusDocumentStore
+from src.haystack.components.vastdb.document_store import VastDocumentStore
 
 logger = logging.getLogger(__name__)
 
 
 @component
-class MilvusDocumentWriter:
+class VastDocumentWriter:
     def __init__(
         self,
-        document_store: MilvusDocumentStore,
+        document_store: VastDocumentStore,
         policy: DuplicatePolicy = DuplicatePolicy.NONE,
         index_name: str = "",
     ):
@@ -47,11 +47,9 @@ class MilvusDocumentWriter:
         )
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "MilvusDocumentWriter":
+    def from_dict(cls, data: Dict[str, Any]) -> "VastDocumentWriter":
         init_parameters = data["init_parameters"]
-        document_store = MilvusDocumentStore.from_dict(
-            init_parameters["document_store"]
-        )
+        document_store = VastDocumentStore.from_dict(init_parameters["document_store"])
         return default_from_dict(
             cls,
             {
@@ -72,11 +70,10 @@ class MilvusDocumentWriter:
     ):
         if policy is None:
             policy = self.policy
-        logger.debug("MilvusWriter received %d docs", len(documents))
-
+        logger.debug("VastDocumentWriter received %d docs", len(documents))
         documents_written = self.document_store.write_documents(
             documents=documents,
             policy=policy,
-            collection_name=index_name,
+            collection_name=index_name or self.index_name,
         )
         return {"documents_written": documents_written}

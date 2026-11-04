@@ -60,7 +60,7 @@ clean_volumes() {
     
     # List volumes that will be removed
     echo "The following volumes will be removed:"
-    echo "  - standalone_milvus_data (Milvus vector database)"
+    echo "  - standalone_vastdb_data (VastDB vector database)"
     echo "  - standalone_etcd_data (etcd metadata store)"
     
     read -p "Are you sure you want to continue? This will delete all collections and indexed data. (y/N): " -n 1 -r
@@ -72,7 +72,7 @@ clean_volumes() {
     fi
     
     # Remove the volumes
-    docker volume rm standalone_milvus_data standalone_etcd_data 2>/dev/null || true
+    docker volume rm standalone_vastdb_data standalone_etcd_data 2>/dev/null || true
     echo -e "${GREEN}Volumes removed${NC}"
 }
 
@@ -140,7 +140,7 @@ verify_cleanup() {
 main() {
     echo -e "${BLUE}This script will:${NC}"
     echo "1. Stop all CVDS services"
-    echo "2. Remove persistent data volumes (milvus_data, etcd_data)"
+    echo "2. Remove persistent data volumes (vastdb_data, etcd_data)"
     echo "3. Start services with fresh volumes"
     echo "4. Verify the cleanup was successful"
     echo ""

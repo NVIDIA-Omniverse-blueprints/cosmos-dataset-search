@@ -235,7 +235,7 @@ class VideoIngestionPipeline:
 
 def create_s3_manager(
     bucket: str = "cosmos-test-bucket",
-    endpoint_url: str = "http://localstack:4566"
+    endpoint_url: str = "http://vast-s3:4566"
 ) -> S3VideoManager:
     LOGGER.info("Creating S3 manager with bucket: %s, endpoint: %s", bucket, endpoint_url)
     os.environ.setdefault("AWS_ACCESS_KEY_ID", "test")

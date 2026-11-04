@@ -149,15 +149,12 @@ test-visual-search-local: check-install
 	@echo "$(BLUE)Running visual search unit tests...$(NC)"
 	. .venv/bin/activate && pytest src/visual_search/common/tests/ -v
 	. .venv/bin/activate && pytest src/visual_search/tests/test_app_instrumentation.py -v
-	. .venv/bin/activate && pytest src/visual_search/tests/test_bulk_indexing.py -v
 	. .venv/bin/activate && pytest src/visual_search/tests/test_curator_parquet_converter.py -v
 	. .venv/bin/activate && pytest src/visual_search/tests/test_pipelines.py -v
 	. .venv/bin/activate && pytest src/visual_search/tests/test_retrieval.py -v
-	. .venv/bin/activate && pytest src/visual_search/v1/apis/utils/test_milvus_utils.py -v
 	. .venv/bin/activate && pytest src/visual_search/tests/test_k8s_secrets.py -v
 	. .venv/bin/activate && pytest src/visual_search/tests/test_nvcf_file_based_secrets_manager.py -v
 	. .venv/bin/activate && pytest src/visual_search/tests/test_cosmos_document_indexing.py -v
-	. .venv/bin/activate && pytest src/visual_search/tests/test_cosmos_pipeline_config.py -v
 	. .venv/bin/activate && pytest src/visual_search/tests/test_collections.py -v
 	. .venv/bin/activate && pytest src/visual_search/tests/test_document_deletion.py -v
 
@@ -165,11 +162,7 @@ test-haystack-local: check-install
 	@echo "$(BLUE)Running haystack unit tests...$(NC)"
 	. .venv/bin/activate && pytest src/haystack/tests/serializer_test.py -v
 	. .venv/bin/activate && pytest src/haystack/components/tests/joiners_test.py -v
-	. .venv/bin/activate && pytest src/haystack/components/milvus/tests/document_store_test.py -v
-	. .venv/bin/activate && pytest src/haystack/components/milvus/tests/filter_utils_test.py -v
-	. .venv/bin/activate && pytest src/haystack/components/milvus/tests/schema_utils_test.py -v
 	. .venv/bin/activate && pytest src/haystack/tests/test_cosmos_all_components.py -v
-	. .venv/bin/activate && pytest src/haystack/tests/test_cosmos_integration.py -v
 	. .venv/bin/activate && pytest src/haystack/tests/test_cosmos_video_embedder.py -v
 
 test-cosmos-embed-oss-local: check-install
@@ -187,9 +180,7 @@ test-all-unit-local: check-install
 	. .venv/bin/activate && pytest src/visual_search/tests/ -v
 	. .venv/bin/activate && pytest src/haystack/tests/ -v
 	. .venv/bin/activate && pytest src/haystack/components/tests/ -v
-	. .venv/bin/activate && pytest src/haystack/components/milvus/tests/ -v
 	. .venv/bin/activate && pytest src/models/linear_classifier/tests/ -v
-	. .venv/bin/activate && pytest src/visual_search/v1/apis/utils/test_milvus_utils.py -v
 
 test-watch-local: check-install
 	@echo "$(BLUE)Running tests in watch mode...$(NC)"
@@ -230,7 +221,7 @@ test-integration-up: check-install ## Start integration test environment
 	@echo "$(YELLOW)----------------------------------------$(NC)"
 	@echo "$(BLUE)Waiting for services to be ready...$(NC)"
 	@echo "$(YELLOW)This may take a few minutes for GPU services to initialize...$(NC)"
-	python scripts/wait_for_services.py --services milvus cosmos-embed visual-search
+	python scripts/wait_for_services.py --services cosmos-embed visual-search
 	@echo ""
 	@echo "$(YELLOW)----------------------------------------$(NC)"
 	@echo "$(BLUE)Services started...$(NC)"

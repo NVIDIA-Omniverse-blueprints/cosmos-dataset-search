@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Exercise guarded s3fs reads without a cloud account, Milvus or GPU packages.
+"""Exercise guarded s3fs reads without a cloud account, VastDB or GPU packages.
 
 The real resolver validates a synthetic private address. Only the socket dial is
 mapped to the loopback fixture; every other outbound connection fails the test.

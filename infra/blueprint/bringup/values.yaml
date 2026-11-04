@@ -28,7 +28,6 @@ tolerations:
   key: "nvidia.com/gpu"
 
 global:
-  milvus: milvus
   ingress:
     enabled: false
     host: "localhost"  # Will be overridden by k8s_up.sh with actual hostname
@@ -38,11 +37,17 @@ global:
     keys:
       dbHost: "dep"
 
-milvus:
-  name: "milvus"
-  namespace: "default"
-  db: "default"
-  port: 19530
+# VastDB vector store (replaces VastDB entirely on this branch)
+vastdb:
+  endpoint: "http://vastdb.example.local"
+  bucket: "cds-vastdb"
+  schema: "cds"
+  secretName: "vastdb-credentials"
+  adbcDriverPath: "/opt/adbc-driver/libadbc_driver_vastdb.so"
+  adbcDriverHostPath: "/opt/adbc-driver"
+
+vastS3:
+  endpoint: "http://vast-s3.example.local"
 
 storageSpec:
   name: "storage"
@@ -65,6 +70,7 @@ env:
   GUNICORN_WORKERS: "5"
   FASTAPI_ROOT_PATH: "/api"
   NVIDIA_API_KEY: "{{ .Env.NGC_API_KEY }}"
+  ALLOWED_PIPELINES: "cosmos_video_search_vastdb"
   # CE1 OSS service configuration for video embeddings
   COSMOS_EMBED_URI: "http://cosmos-embed.default.svc.cluster.local:8000"
 

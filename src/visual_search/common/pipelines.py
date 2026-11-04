@@ -36,8 +36,6 @@ from haystack.document_stores.in_memory import InMemoryDocumentStore
 from haystack.document_stores.types import DuplicatePolicy
 from haystack.tracing import auto_enable_tracing
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, validator
-from pymilvus.exceptions import MilvusException
-
 from .models import Collection, Pipeline, QueryType
 
 if os.getenv("TRACE_HAYSTACK", "true") == "true":
@@ -358,7 +356,7 @@ def run_index_pipeline(
     documents : List[HaystackDocument]
         List of documents to index
     index_name: str
-        The collection name to write to, only useful to MilvusDocumentStore
+        The collection name to write to, used by VastDocumentStore
 
     Returns
     -------
@@ -780,8 +778,11 @@ async def load_pipelines() -> None:
                 )
                 break  # Break the loop if successful
 
-            except MilvusException as e:
-                logging.info("Waiting for pipeline services to come up...")
+            except Exception as e:
+                # Retry while VastDB / network dependencies finish starting.
+                logging.info(
+                    "Waiting for pipeline services to come up (%s)...", type(e).__name__
+                )
                 current_time = asyncio.get_event_loop().time()
                 if current_time - start_time > 300:  # 300 seconds = 5 minutes
                     logging.error(

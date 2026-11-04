@@ -111,7 +111,7 @@ cds pipelines list
 ### Create a new collection
 
 ```bash
-cds collections create --pipeline simple_image_search_milvus
+cds collections create --pipeline simple_image_search_vastdb
 ```
 
 This will create a new collection. The collection_id will be printed to the console. You can specify more complex configurations for the index as well.
@@ -151,7 +151,7 @@ aws_secret_access_key = test
 2. **`~/.aws/config`** - Endpoint and region configuration:
 ```ini
 [profile cds-s3]
-endpoint_url = http://localstack:4566 # in case of docker deployment or add proper s3/minio endpoint url
+endpoint_url = http://vast-s3:4566 # in case of docker deployment or add proper s3/minio endpoint url
 region = us-east-1
 ```
 
@@ -164,7 +164,7 @@ cds ingest files s3://cosmos-test-bucket/videos/ \
 ```
 
 **Important Notes:**
-- For S3-compatible storage (MinIO, LocalStack, etc.), the `endpoint_url` configuration in `~/.aws/config` is **required**
+- For S3-compatible storage (MinIO, Vast S3, etc.), the `endpoint_url` configuration in `~/.aws/config` is **required**
 - Use `s3://` URIs, not presigned URLs
 - The profile name in credentials file is `[cds-s3]`, but in config file it's `[profile cds-s3]`
 - Depending on your environment, `--metadata-json` and `--output-log` may be optional or required

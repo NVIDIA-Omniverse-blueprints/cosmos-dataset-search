@@ -20,7 +20,6 @@ from typing import List, Tuple, Union
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 
-from src.haystack.components.milvus.document_store import MilvusDocumentStore
 from src.models.linear_classifier.model import run_linear_classifier_training
 
 from ...common.apis.collections import pipeline_handler
@@ -150,7 +149,9 @@ async def train(
             "operator": "in",
             "value": list(docs.labelled_documents.keys()),
         }
-        if isinstance(document_store, MilvusDocumentStore):
+        from src.haystack.components.vector_store_utils import is_vector_document_store
+
+        if is_vector_document_store(document_store):
             retrieved_documents = document_store.filter_documents(
                 collection_name=index_name,
                 filters=filters,

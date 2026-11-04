@@ -378,7 +378,7 @@ class EmbeddingParquetProcessor:
             "parquet_paths": files,
             "access_key": credentials.access_key,
             "secret_key": credentials.secret_key,
-            "endpoint_url": endpoint_url  # Will be None for default AWS S3, or custom for LocalStack/MinIO
+            "endpoint_url": endpoint_url  # Will be None for default AWS S3, or custom for Vast S3/MinIO
         }
         
         response = self.session.post(

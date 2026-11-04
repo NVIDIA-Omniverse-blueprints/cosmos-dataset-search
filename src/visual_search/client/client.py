@@ -48,7 +48,7 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from src.haystack.components.milvus.schema_utils import MetadataConfig
+from src.haystack.components.schema_utils import MetadataConfig
 from src.visual_search.client.config import (
     DEFAULT,
     Profile,

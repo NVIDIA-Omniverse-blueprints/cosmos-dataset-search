@@ -35,11 +35,6 @@ logger = logging.getLogger(__name__)
 
 # Service configuration
 SERVICES = {
-    "milvus": {
-        "url": "http://localhost:9091",
-        "health_endpoint": "/healthz",
-        "timeout": 120,
-    },
     "cosmos-embed": {
         "url": "http://localhost:9000",
         "health_endpoint": "/v1/health/ready",

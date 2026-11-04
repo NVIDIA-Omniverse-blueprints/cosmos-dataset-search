@@ -213,7 +213,7 @@ fi
 if check_command helm; then
     echo ""
     echo "Updating Helm repositories..."
-    helm repo add milvus https://zilliztech.github.io/milvus-helm/ || true
+    helm repo add vastdb https://zilliztech.github.io/vastdb-helm/ || true
     helm repo add bitnami https://charts.bitnami.com/bitnami || true
     helm repo update
 fi

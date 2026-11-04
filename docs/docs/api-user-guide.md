@@ -73,11 +73,11 @@ for pipeline in pipelines.get("pipelines", []):
     print(f"  Description: {pipeline['config']['index']['description']}")
 ```
 
-You should see the `cosmos_video_search_milvus` pipeline, which uses CE1 OSS service for video embeddings and Milvus for vector storage.
+You should see the `cosmos_video_search_vastdb` pipeline, which uses CE1 OSS service for video embeddings and VastDB for vector storage.
 
 ## Step 3: Create a Collection
 
-Create a new collection using the `cosmos_video_search_milvus` pipeline. Collections organize your video embeddings and enable search.
+Create a new collection using the `cosmos_video_search_vastdb` pipeline. Collections organize your video embeddings and enable search.
 
 **Using curl:**
 
@@ -85,7 +85,7 @@ Create a new collection using the `cosmos_video_search_milvus` pipeline. Collect
 curl -X POST http://localhost:8888/v1/collections \
   -H 'Content-Type: application/json' \
   -d '{
-    "pipeline": "cosmos_video_search_milvus",
+    "pipeline": "cosmos_video_search_vastdb",
     "name": "My First Video Collection",
     "tags": {
       "storage-template": "s3://cosmos-test-bucket/videos/{{filename}}"
@@ -99,7 +99,7 @@ curl -X POST http://localhost:8888/v1/collections \
 import requests
 
 payload = {
-    "pipeline": "cosmos_video_search_milvus",
+    "pipeline": "cosmos_video_search_vastdb",
     "name": "My First Video Collection",
     "tags": {
         "storage-template": "s3://cosmos-test-bucket/videos/{{filename}}"
@@ -148,7 +148,7 @@ print(f"\nUsing collection ID: {collection_id}")
 
 ## Step 5: Prepare Videos for Ingestion
 
-For LocalStack (Docker Compose deployment), you need to upload videos to the LocalStack S3 bucket. We'll download a small subset of MSR-VTT videos as an example.
+For Vast S3 (Docker Compose deployment), you need to upload videos to the Vast S3 S3 bucket. We'll download a small subset of MSR-VTT videos as an example.
 
 ### Prepare Sample Videos
 
@@ -211,9 +211,9 @@ ls -lh *.mp4
 
 This copies 5 MSR-VTT videos to your sample directory.
 
-### Upload Videos to LocalStack
+### Upload Videos to Vast S3
 
-Upload the videos to the LocalStack S3 bucket using boto3 (Python S3 client):
+Upload the videos to the Vast S3 S3 bucket using boto3 (Python S3 client):
 
 ```bash
 cd ~/cds-data/sample-videos
@@ -276,7 +276,7 @@ collection_id = "<your-collection-id>"  # Replace with your actual collection ID
 
 s3_client = boto3.client(
     's3',
-    endpoint_url='http://localstack:4566',
+    endpoint_url='http://vast-s3:4566',
     aws_access_key_id='test',
     aws_secret_access_key='test',
     region_name='us-east-1'
@@ -486,7 +486,7 @@ print("   ✓ API is healthy")
 print("\n2. Listing available pipelines...")
 pipelines_resp = requests.get(f"{BASE_URL}/v1/pipelines")
 pipelines = pipelines_resp.json()
-pipeline_id = "cosmos_video_search_milvus"
+pipeline_id = "cosmos_video_search_vastdb"
 print(f"   ✓ Using pipeline: {pipeline_id}")
 
 # Step 3: Create Collection
@@ -505,7 +505,7 @@ print("\n4. Listing collections...")
 collections = requests.get(f"{BASE_URL}/v1/collections").json()
 print(f"   ✓ Total collections: {len(collections.get('collections', []))}")
 
-# Step 5: Prepare and Upload Videos to LocalStack
+# Step 5: Prepare and Upload Videos to Vast S3
 print("\n5. Preparing sample videos...")
 
 # Assuming videos are already downloaded to ~/cds-data/sample-videos
@@ -518,10 +518,10 @@ if not video_files:
 
 print(f"   Found {len(video_files)} videos in {sample_dir}")
 
-# Upload to LocalStack
+# Upload to Vast S3
 s3_client = boto3.client(
     's3',
-    endpoint_url='http://localstack:4566',
+    endpoint_url='http://vast-s3:4566',
     aws_access_key_id='test',
     aws_secret_access_key='test',
     region_name='us-east-1'
@@ -530,7 +530,7 @@ s3_client = boto3.client(
 bucket = 'cosmos-test-bucket'
 prefix = 'videos'
 
-print("   Uploading videos to LocalStack...")
+print("   Uploading videos to Vast S3...")
 for video_file in video_files:
     key = f"{prefix}/{video_file.name}"
     s3_client.upload_file(str(video_file), bucket, key)

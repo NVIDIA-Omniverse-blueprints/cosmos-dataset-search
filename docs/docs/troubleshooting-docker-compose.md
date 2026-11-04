@@ -27,7 +27,7 @@ make test-integration-logs
 # View specific service logs
 docker compose -f deploy/standalone/docker-compose.build.yml logs visual-search
 docker compose -f deploy/standalone/docker-compose.build.yml logs cosmos-embed
-docker compose -f deploy/standalone/docker-compose.build.yml logs milvus
+docker compose -f deploy/standalone/docker-compose.build.yml logs vastdb
 
 # Follow logs in real-time
 docker compose -f deploy/standalone/docker-compose.build.yml logs -f visual-search
@@ -189,7 +189,7 @@ docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
 
 #### Services Cannot Communicate
 
-**Problem**: Services cannot communicate with each other (e.g., Visual Search cannot reach Milvus or CE1 OSS service).
+**Problem**: Services cannot communicate with each other (e.g., Visual Search cannot reach VastDB or CE1 OSS service).
 
 **Solution:**
 ```bash
@@ -294,29 +294,29 @@ make test-integration-up
 
 ### Database Issues
 
-#### Milvus Connection Errors
+#### VastDB Connection Errors
 
-**Problem**: Services cannot connect to Milvus or Milvus fails to start.
+**Problem**: Services cannot connect to VastDB or VastDB fails to start.
 
 **Solution:**
 ```bash
-# Check Milvus container status
-docker compose -f deploy/standalone/docker-compose.build.yml ps milvus
+# Check VastDB container status
+docker compose -f deploy/standalone/docker-compose.build.yml ps vastdb
 
-# Check Milvus logs
-docker compose -f deploy/standalone/docker-compose.build.yml logs milvus
+# Check VastDB logs
+docker compose -f deploy/standalone/docker-compose.build.yml logs vastdb
 
-# Verify etcd is running (Milvus dependency)
-docker compose -f deploy/standalone/docker-compose.build.yml ps milvus-etcd
+# Verify etcd is running (VastDB dependency)
+docker compose -f deploy/standalone/docker-compose.build.yml ps vastdb-etcd
 
-# Restart Milvus and dependencies
+# Restart VastDB and dependencies
 make test-integration-down
 make test-integration-up
 ```
 
-#### Milvus Data Corruption
+#### VastDB Data Corruption
 
-**Problem**: Milvus reports data corruption or index errors.
+**Problem**: VastDB reports data corruption or index errors.
 
 **Solution:**
 ```bash
@@ -383,14 +383,14 @@ docker system df
 
 **Solution:**
 ```bash
-# Verify LocalStack hostname mapping
-grep localstack /etc/hosts
-# Expected: 127.0.0.1   localstack
+# Verify Vast S3 hostname mapping
+grep vast-s3 /etc/hosts
+# Expected: 127.0.0.1   vast-s3
 
 # If missing, add it
-echo "127.0.0.1   localstack" | sudo tee -a /etc/hosts
+echo "127.0.0.1   vast-s3" | sudo tee -a /etc/hosts
 
-# Check LocalStack is running and healthy
+# Check Vast S3 is running and healthy
 curl http://localhost:4566/health
 
 # Verify S3 credentials in .env file
@@ -415,13 +415,13 @@ cds collections get --collection-id <id> --profile local
 # Verify embedding pipeline is working
 curl http://localhost:9000/v1/health/ready
 
-# Check Milvus status
-docker compose -f deploy/standalone/docker-compose.build.yml logs milvus
+# Check VastDB status
+docker compose -f deploy/standalone/docker-compose.build.yml logs vastdb
 ```
 
 ### Corrupted Index
 
-**Problem**: Milvus index appears corrupted or service won't start.
+**Problem**: VastDB index appears corrupted or service won't start.
 
 **Solution:**
 ```bash

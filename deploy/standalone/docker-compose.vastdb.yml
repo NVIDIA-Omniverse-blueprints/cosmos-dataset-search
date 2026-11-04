@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# VastDB is the default (and only) vector backend on this branch.
+# This file is intentionally empty of service overrides — use:
+#
+#   docker compose -f docker-compose.build.yml -f docker-compose.ce1-oss.yml up -d
+#
+# with deploy/standalone/.env populated from .env.example (VastDB + Vast S3).

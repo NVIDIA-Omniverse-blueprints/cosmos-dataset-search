@@ -186,7 +186,7 @@ def post_documents(
 
 
 def flush_collection(base_url: str, collection_id: str, verbose: bool = False) -> dict:
-    """Force Milvus flush for the collection and return response JSON."""
+    """Force VastDB flush for the collection and return response JSON."""
     url = f"{base_url}/v1/admin/collections/{collection_id}/flush"
     if verbose:
         print("POST", url, "(flush)")

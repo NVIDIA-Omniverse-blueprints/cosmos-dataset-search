@@ -18,7 +18,7 @@ The EKS nodes must be able to pull both images. Set `NGC_API_KEY` to a key with 
 **What gets deployed**:
 - EKS cluster with GPU and CPU node groups
 - S3 bucket for storage
-- Milvus vector database
+- VastDB vector database
 - CE1 OSS service for video embeddings
 - Visual search service
 
@@ -191,7 +191,7 @@ docker exec cds-deployment bash -c "cd /workspace/blueprint/bringup && ./cluster
 - Creates VPC and networking resources
 - Provisions 4 node groups via CloudFormation:
   - 2x g6.xlarge (GPU nodes)
-  - 1x r7i.4xlarge (high-memory for Milvus)
+  - 1x r7i.4xlarge (high-memory for VastDB)
   - 5x m6i.2xlarge (general compute)
   - 1x c6i.2xlarge (optimized compute)
 - Configures high-performance GP3 storage class
@@ -263,7 +263,7 @@ docker exec -e COSMOS_EMBED_OSS_MODEL_PVC=ce1-oss-model \
 **What gets deployed**:
 - Kubernetes secrets for image pulling
 - CE1 OSS service (GPU-accelerated embedding service)
-- Milvus vector database (15 pods)
+- VastDB vector database (15 pods)
 - Visual Search API service
 - Nginx ingress controller with TLS
 
@@ -278,7 +278,7 @@ docker exec cds-deployment bash -c "kubectl get pods -l app.kubernetes.io/name=c
 ```
 
 **Key stages**:
-1. Milvus components start (~5 min)
+1. VastDB components start (~5 min)
 2. Visual Search starts (~2-3 min)
 3. CE1 validates and loads the pre-provisioned model snapshot on the GPU
 4. Ingress controller creates AWS load balancer (~2-3 min)
@@ -294,7 +294,7 @@ All pods should show "Running" with "1/1" or "2/2" ready.
 **Common issues**:
 
 - **Cosmos-embed ContainerCreating for >5 minutes**: Check image pulling, PVC binding and GPU scheduling before inspecting model-load logs
-- **Milvus-querynode pod pending**: Check if scheduled on r7i.4xlarge node
+- **VastDB-querynode pod pending**: Check if scheduled on r7i.4xlarge node
 - **Image pull errors**: Verify that both NGC `1.2.0` tags are published and that the key in the `nvcr-io` image pull Secret can access them.
 
 ### Step 7: Get Deployment URLs
@@ -351,7 +351,7 @@ Pipelines:
 {
   "pipelines": [
     {
-      "id": "cosmos_video_search_milvus",
+      "id": "cosmos_video_search_vastdb",
       "enabled": true,
       "missing": []
     }
@@ -624,7 +624,7 @@ Add `my-s3-creds` to `secretAccess.allowedNames` and apply the visual-search Hel
 When creating a collection that references videos in S3, specify the secret in the collection configuration:
 
 ```bash
-cds collections create --pipeline cosmos_video_search_milvus \
+cds collections create --pipeline cosmos_video_search_vastdb \
   --name "My Collection" \
   --config-yaml <(echo "
 tags:
@@ -652,8 +652,8 @@ docker exec cds-deployment bash -c "kubectl logs deployment/visual-search --tail
 # Cosmos-embed logs
 docker exec cds-deployment bash -c "kubectl logs deployment/cosmos-embed --tail=100"
 
-# Milvus query node logs
-docker exec cds-deployment bash -c "kubectl logs deployment/milvus-querynode --tail=100"
+# VastDB query node logs
+docker exec cds-deployment bash -c "kubectl logs deployment/vastdb-querynode --tail=100"
 ```
 
 ### Check Resources
